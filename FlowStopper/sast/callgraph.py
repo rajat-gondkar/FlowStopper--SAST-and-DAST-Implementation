@@ -24,7 +24,7 @@ def build_call_graph(index: ProjectIndex, config: Optional[SastConfig] = None) -
     for fn in index.functions.values():
         types = local_types(index, fn)
         callees: set[str] = set()
-        for call in _own_calls(fn.node):
+        for call in own_calls(fn.node):
             target = index.resolve_call(call, fn.module, fn, types)
             if target is None:
                 continue
@@ -95,8 +95,11 @@ def local_types(index: ProjectIndex, fn: FunctionInfo) -> dict[str, str]:
     return types
 
 
-def _own_calls(fn_node: ast.AST) -> list[ast.Call]:
-    """Call nodes in a function's own scope (not inside nested defs/classes/lambdas)."""
+def own_calls(fn_node: ast.AST) -> list[ast.Call]:
+    """Call nodes in a function's own scope (not inside nested defs/classes/lambdas).
+
+    Public because the B-2 reachability test must see exactly the calls the graph saw (A-48).
+    """
     calls: list[ast.Call] = []
     body = getattr(fn_node, "body", [])
     for stmt in body:

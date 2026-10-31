@@ -19,8 +19,9 @@ from __future__ import annotations
 
 import ast
 from dataclasses import dataclass
-from typing import Optional
+from typing import Callable, Optional
 
+from FlowStopper.sast import suppress
 from FlowStopper.sast.index import ModuleContext, dotted_parts
 from FlowStopper.sast.routes.resolver import const_str, keyword
 
@@ -203,6 +204,17 @@ MARKUP = SinkSpec(
     arg_keywords=frozenset({"base", "value", "s"}),
 )
 
+# The template *source* of `render_template_string` (DECISIONS A-45): request data in it is rendered
+# as markup (and template code). Its keyword arguments stay ordinary escaped template variables.
+TEMPLATE_STRING = SinkSpec(
+    cwe=79,
+    rule_family="xss",
+    token="template-string",
+    dotted=frozenset({"flask.render_template_string", "flask.templating.render_template_string"}),
+    leaf_methods=frozenset({"render_template_string"}),
+    arg_keywords=frozenset({"source"}),
+)
+
 # Order matters only for determinism: the first row that matches wins.
 SINKS: tuple[SinkSpec, ...] = (
     SQL_EXECUTE,
@@ -215,6 +227,7 @@ SINKS: tuple[SinkSpec, ...] = (
     REDIRECT,
     HTML_RESPONSE,
     MARKUP,
+    TEMPLATE_STRING,
 )
 
 # Sinks that are not call expressions; the engine reports them directly.
@@ -285,16 +298,18 @@ _TITLES: dict[tuple[str, str], str] = {
     ("xss", "html-response"): "XSS: request data returned in an HTML response without escaping",
     ("xss", "markup"): "XSS: request data wrapped in a safe-HTML marker without escaping",
     ("xss", "template"): "XSS: request data rendered by a template without escaping",
+    ("xss", "template-string"): "XSS: request data used as the template source of render_template_string() {phrase}",
 }
 # Wording the cross-team oracle fixes for a specific (family, token, built kind).
 _SPECIAL_TITLES: dict[tuple[str, str, str], str] = {
     ("sqli", "execute", "concat"): "SQL injection: request data concatenated into SQL passed to execute()",
 }
-SUPPRESS_LIST_NO_SHELL = "safe:subprocess-list-no-shell"
-SUPPRESS_NO_SHELL = "safe:subprocess-no-shell"
+SUPPRESS_LIST_NO_SHELL = suppress.SAFE_SUBPROCESS_LIST_NO_SHELL
+SUPPRESS_NO_SHELL = suppress.SAFE_SUBPROCESS_NO_SHELL
 _SUPPRESSED_TITLES: dict[str, str] = {
     SUPPRESS_LIST_NO_SHELL: "Command execution with request data (list form, no shell)",
     SUPPRESS_NO_SHELL: "Command execution with request data (no shell)",
+    suppress.SAFE_SQL_PARAMETERISED: "Parameterised SQL query with request data in bind parameters",
 }
 
 
@@ -325,9 +340,103 @@ def safe_response_at(call: ast.Call, ctx: ModuleContext) -> Optional[str]:
     if resolved in HTML_RESPONSE.dotted or (leaf in HTML_RESPONSE.leaf_methods and not _is_project(resolved, ctx)):
         for name in CONTENT_TYPE_KEYWORDS:
             value = const_str(keyword(call, name))
-            if value and value.split(";")[0].strip().lower() in SAFE_CONTENT_TYPES:
+            if is_safe_content_type(value):
                 return f"{name}={value}"
     return None
+
+
+def is_safe_content_type(text: Optional[str]) -> bool:
+    """True for a constant content type that browsers do not render as HTML (`text/plain; charset=...`)."""
+    return text is not None and text.split(";")[0].strip().lower() in SAFE_CONTENT_TYPES
+
+
+def later_safe_content_type(stmts: list[ast.stmt], name: str) -> bool:
+    """True when straight-line `stmts` set a safe content type on response `name` (DECISIONS A-38).
+
+    Covers `resp = Response(...)` followed by `resp.mimetype = "application/json"`,
+    `resp.content_type = ...` or `resp.headers["Content-Type"] = ...`. The last such write in the
+    straight-line range decides, so a later override to `text/html` wins (A-53). Other plain
+    assignments and expression statements are skipped; a reassignment of `name`, a return/raise or any
+    compound statement ends the range (a write inside a branch may not run). Anything else that may
+    change the type gives False: a call on `name.headers` (`resp.headers.set(...)`), a write to
+    `name.headers` itself or to a computed header key, a compound statement that mentions the content
+    type or headers of `name`, or a returned tuple with non-constant extras (`return resp, 200, hdrs`).
+    """
+    safe = False
+    for stmt in stmts:
+        if isinstance(stmt, ast.Expr):
+            if _calls_headers(stmt, name):
+                return False
+            continue
+        if not isinstance(stmt, (ast.Assign, ast.AnnAssign)):
+            return safe and not _mentions_content_type(stmt, name) and not _returns_headers(stmt)
+        if _calls_headers(stmt, name):
+            return False
+        targets = stmt.targets if isinstance(stmt, ast.Assign) else [stmt.target]
+        for target in targets:
+            if _rebinds(target, name):
+                return safe
+            if _is_attribute_of(target, name, ("headers",)) or _is_computed_header(target, name):
+                return False
+            if _is_attribute_of(target, name, CONTENT_TYPE_KEYWORDS) or _is_content_type_header(target, name):
+                safe = is_safe_content_type(const_str(stmt.value))
+    return safe
+
+
+def _calls_headers(node: ast.AST, name: str) -> bool:
+    """Some call in `node` is a method of `name.headers` (`resp.headers.set("Content-Type", ...)`)."""
+    return any(
+        isinstance(sub, ast.Call)
+        and isinstance(sub.func, ast.Attribute)
+        and _is_attribute_of(sub.func.value, name, ("headers",))
+        for sub in ast.walk(node)
+    )
+
+
+def _mentions_content_type(node: ast.AST, name: str) -> bool:
+    """`node` refers to `name.mimetype`, `name.content_type` or `name.headers` anywhere."""
+    return any(_is_attribute_of(sub, name, (*CONTENT_TYPE_KEYWORDS, "headers")) for sub in ast.walk(node))
+
+
+def _returns_headers(stmt: ast.stmt) -> bool:
+    """`return resp, 200, headers`: a returned tuple whose extra items are not all constants may set headers."""
+    if not (isinstance(stmt, ast.Return) and isinstance(stmt.value, ast.Tuple)):
+        return False
+    return any(not isinstance(item, ast.Constant) for item in stmt.value.elts[1:])
+
+
+def _is_computed_header(target: ast.expr, name: str) -> bool:
+    """`name.headers[key]` with a key that is not a string constant (it may be Content-Type)."""
+    return (
+        isinstance(target, ast.Subscript)
+        and _is_attribute_of(target.value, name, ("headers",))
+        and const_str(target.slice) is None
+    )
+
+
+def _rebinds(target: ast.expr, name: str) -> bool:
+    """True when assignment target `target` stores to the bare name `name` (also inside a tuple)."""
+    return any(
+        isinstance(node, ast.Name) and node.id == name and isinstance(node.ctx, ast.Store) for node in ast.walk(target)
+    )
+
+
+def _is_attribute_of(target: ast.expr, name: str, attrs: tuple[str, ...]) -> bool:
+    """`name.<attr>` for one of `attrs`."""
+    return (
+        isinstance(target, ast.Attribute)
+        and target.attr in attrs
+        and isinstance(target.value, ast.Name)
+        and target.value.id == name
+    )
+
+
+def _is_content_type_header(target: ast.expr, name: str) -> bool:
+    """`name.headers["Content-Type"]` (header names are case-insensitive)."""
+    if not (isinstance(target, ast.Subscript) and _is_attribute_of(target.value, name, ("headers",))):
+        return False
+    key = const_str(target.slice)
+    return key is not None and key.strip().lower() == "content-type"
 
 
 def is_template_render(call: ast.Call, ctx: ModuleContext) -> bool:
@@ -356,12 +465,29 @@ def template_name(call: ast.Call) -> Optional[str]:
     return None
 
 
-def template_context(call: ast.Call) -> dict[str, ast.expr]:
-    """Template variables a render call passes: keyword arguments plus constant context-dict keys."""
+def template_context(
+    call: ast.Call, local_value: Optional[Callable[[str], Optional[ast.expr]]] = None
+) -> dict[str, ast.expr]:
+    """Template variables a render call passes: keyword arguments plus constant context-dict keys.
+
+    A `**ctx` splat counts when it is an inline dict literal, or a local name that `local_value`
+    maps to a dict literal or a `dict(k=v, ...)` call (DECISIONS A-39); anything else is not guessed.
+    """
     out: dict[str, ast.expr] = {}
     contexts: list[ast.Dict] = [arg for arg in call.args if isinstance(arg, ast.Dict)]
     for word in call.keywords:
-        if word.arg is None or word.arg in TEMPLATE_NAME_KEYWORDS:
+        if word.arg is None:
+            splat: Optional[ast.expr] = word.value
+            if isinstance(splat, ast.Name):
+                splat = local_value(splat.id) if local_value is not None else None
+            if isinstance(splat, ast.Dict):
+                contexts.append(splat)
+            elif isinstance(splat, ast.Call) and isinstance(splat.func, ast.Name) and splat.func.id == "dict":
+                for kw in splat.keywords:
+                    if kw.arg is not None:
+                        out.setdefault(kw.arg, kw.value)
+            continue
+        if word.arg in TEMPLATE_NAME_KEYWORDS:
             continue
         if word.arg in TEMPLATE_CONTEXT_KEYWORDS and isinstance(word.value, ast.Dict):
             contexts.append(word.value)  # a context dictionary: its keys are the variables
@@ -442,6 +568,14 @@ def sink_title(family: str, token: str, built: frozenset[str], suppress_reason: 
     """One-line human title for a finding, following the cross-team oracle wording."""
     if suppress_reason in _SUPPRESSED_TITLES:
         return _SUPPRESSED_TITLES[suppress_reason]
+    title = _base_title(family, token, built)
+    if suppress_reason is not None and suppress_reason.startswith(suppress.SANITIZED_PREFIX):
+        names = suppress_reason[len(suppress.SANITIZED_PREFIX) :].replace("+", ", ")
+        return f"{title} (sanitised: {names})"
+    return title
+
+
+def _base_title(family: str, token: str, built: frozenset[str]) -> str:
     kind = built_kind(built)
     special = _SPECIAL_TITLES.get((family, token, kind))
     if special is not None:

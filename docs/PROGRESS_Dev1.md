@@ -57,6 +57,47 @@ started. Dev B tracks their own in [`PROGRESS_Dev2.md`](PROGRESS_Dev2.md). Full 
   1/3, links 0/2, wrong 0/0, false alarms 0/9). The spec's `baseline.json` waits for the organisers'
   app (A-36). Triage handed to Dev B for `docs/BACKLOG.md` (P3-J2).
 
+## Phase 4 (Dev A) — 2026-10-31, batch 1 (measured in `docs/metrics/phase4_dev_a.md`)
+- [x] BACKLOG 12 — Mock A binds `HOST` (default `127.0.0.1`); Dockerfile/compose set `HOST=0.0.0.0` (A-37).
+- [x] BACKLOG 9 — a response whose content type is set to JSON/plain text right after construction is
+  safe (A-38); bench `app/app.py:185` CWE-79 gone, bench false alarms 0/9 → 0/8.
+- [x] BACKLOG 11 splat — `render_template(t, **ctx)` resolves a single-assignment dict / `dict(...)` (A-39).
+- [x] BACKLOG 11 `_is_abort` — only resolved abort/exit callees end a block (A-40).
+- [x] BACKLOG 11 fixpoint cap — `compute_summaries` logs a WARNING when it hits the cap (A-41).
+- [x] BACKLOG 11 receiver matching — checked, 0 path-access / `.raw`/`.extra` findings on both
+  targets; left unchanged (A-42).
+- [x] BACKLOG 10 — secrets in test code still reported, confidence capped at 0.5 (A-43).
+- Batch-1 eval: Mock A 13/13 · 10/13 · 7/10 · 0/7 · 1/21 (unchanged); bench 3/4 · 1/3 · 0/2 · 0/0 ·
+  0/8. `make check` green (427 passed, 1 skipped).
+
+## Phase 4 (Dev A) — 2026-10-31, batch 2 (measured in `docs/metrics/phase4_dev_a.md`)
+- [x] BACKLOG 8 (SAST half) — `request.url/path/full_path/base_url` are unnamed path sources (A-44);
+  the `render_template_string` template source is a CWE-79 sink (A-45); request hooks such as
+  `@app.errorhandler` are walked as code-only entry points (A-46). Bench VF02 now detected.
+- [x] P4-A2 / BACKLOG 11 B-2 noise cut — `sast/suppress.py`: `sanitized:<names>`,
+  `safe:sql-parameterised`, `safe:subprocess-*`, conservative `unreachable` (never CWE-798); a live
+  finding drops suppressed duplicates at its site (A-47, A-48, A-49). New `SastResult.stats` ints:
+  `reported_findings`, `suppressed_findings`, `suppressed_sanitized`, `suppressed_safe`,
+  `suppressed_unreachable`, `request_hooks`, `unreachable_functions`.
+- Batch-2 eval: Mock A 13/13 · 10/13 · 7/10 · 0/7 · 1/21 (unchanged, suppressed issues 1 → 5); bench
+  4/4 · 1/3 · 0/2 · 0/0 · 0/9. `make check` green (455 passed, 1 skipped).
+
+## Phase 4 (Dev A) — 2026-10-31, final (measured in `docs/metrics/phase4_dev_a.md`)
+- [x] P4-A1 generic-rule backlog — before/after per batch in `docs/metrics/phase4_dev_a.md`; final
+  run in `out/p4a_mock_a` / `out/p4a_bench` (BACKLOG 8 SAST half, 9, 10, 11, 12 above).
+- [x] P4-A2 B-2 noise cut — `sanitized:`/`safe:`/`unreachable` suppression (batch 2, A-47..A-49).
+- [x] P4-A3 performance — each file parsed once (new test); median `run_sast` Mock A 0.025 s, bench
+  0.038 s, pydantic proxy 1.8 s (was 3.1 s), synthetic 200-route project 2.4 s; no optimisation needed (A-50).
+- [x] BACKLOG 6 — Mock A key gaps (`POST /login` password, `GET /download` debug-page XSS) kept as
+  known extras, `answer_key.json` unchanged (A-51).
+- [x] BACKLOG 8 (SAST half) · [x] BACKLOG 9 · [x] BACKLOG 10 · [x] BACKLOG 11 · [x] BACKLOG 12 — see batches 1-2.
+- Final eval: Mock A 13/13 · 10/13 · 7/10 · 0/7 · 1/21 (5 suppressed); bench 4/4 · 1/3 · 0/2 · 0/0 ·
+  0/9 (1 suppressed). DAST numbers unchanged (Dev B's changes not in this checkout).
+- [x] Review fixes — `unreachable` is switched off when the project looks names up at run time
+  (`getattr` with a computed name, `globals()`/`vars()`, `__dict__`, ...) (A-52); the content-type
+  lookahead uses the last straight-line write, so a later `text/html` override keeps the XSS (A-53).
+  SAST output on Mock A and the bench unchanged.
+
 ## Third-party benchmark (we45 Vulnerable-Flask-App) — Dev A owned
 - [x] Choose app + log (D-16); `make bench-fetch`/`make bench`; source-verified `answer_key.json`;
   scope via `ALLOWED_HOSTS` config only (R3); R6 guard extended to `bench/*/answer_key.json`;
@@ -112,19 +153,22 @@ _Log_
 - 2026-10-31 — **P3-J2 closed**: Dev B's `docs/BACKLOG.md` (Mock A items 1–6) plus a Dev A addendum
   (items 7–12: bench app results, DAST login support, VF02, the bench XSS false positive, secrets in
   test code, the Phase 2 review items, Mock A binding to 0.0.0.0) and a Phase 4 ownership split.
+- 2026-10-31 — **Phase 4 (Dev A) done**: P4-A1/A2/A3 and BACKLOG 6, 8 (SAST half), 9-12 landed in
+  three batches (A-37..A-51). Bench code detection 3/4 → 4/4, 0 wrong links on both targets, Mock A
+  false alarms 1/21, pydantic proxy SAST 1.8 s.
 
 ## Phase 4 backlog (from the Phase 2 semantic review — all misses, never wrong answers)
 Carry these into **P4-A1** (generic-rule backlog) / **P4-A2** (B-2 suppression):
-- [ ] **Template context splat invisible:** `sinks.template_context` skips `**kwargs`, so
+- [x] **Template context splat invisible:** `sinks.template_context` skips `**kwargs`, so
   `render_template("p.html", **ctx)` with a tainted value yields no CWE-79. Resolve a splat of a
   local dict literal, or record it in `docs/LIMITATIONS.md` (Dev B finalises that file in P7-B1).
-- [ ] **Unreachable sinks are dropped, not suppressed:** the driver walks only route handlers, so a
+- [x] **Unreachable sinks are dropped, not suppressed:** the driver walks only route handlers, so a
   sink no route reaches emits nothing. P4-A2 needs those findings to *exist* and be marked
   `suppressed` with reason `unreachable` (never for CWE-798).
-- [ ] **`_is_abort` is too broad:** any unresolved `fail`/`exit`/`abort` leaf truncates the rest of
+- [x] **`_is_abort` is too broad:** any unresolved `fail`/`exit`/`abort` leaf truncates the rest of
   the block, silently losing flows. Narrow to resolved framework/stdlib names, or drop `fail`.
-- [ ] **Fixpoint cap is silent:** `compute_summaries` stops at `fixpoint_max_iterations` with no log;
+- [x] **Fixpoint cap is silent:** `compute_summaries` stops at `fixpoint_max_iterations` with no log;
   a non-converged run shows only as `summary_iterations == 10` in stats. Log a warning.
-- [ ] **Receiver-based leaf matching is broad** (possible FP source): `PATH_ACCESS` fires on any
+- [x] **Receiver-based leaf matching is broad** (possible FP source): `PATH_ACCESS` fires on any
   tainted receiver's `.open()`/`.read_text()`/`.write_text()`, SQL on `.raw`/`.extra`. Needs a
   false-positive check against the real app in Phase 3/4.

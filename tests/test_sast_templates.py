@@ -146,3 +146,34 @@ def test_render_call_without_the_template_index_reports_nothing(tmp_path):
     graph = build_call_graph(index)
     routes = annotate_reachable(index, extract_routes(index), graph=graph)
     assert analyse_taint(index, routes, graph, None) == []  # A-18: the rule needs the template scan
+
+
+# --------------------------------------------------------------------------- P4: **ctx splat (A-39)
+def _splat_app(*assignments: str) -> dict[str, str]:
+    """APP's handler, but passing its variables as `render_template("product.html", **ctx)`."""
+    lines = "\n".join(f"    {line}" for line in assignments)
+    source = (
+        "from flask import Flask, render_template, request\n\napp = Flask(__name__)\n\n\n"
+        '@app.route("/product")\n'
+        "def product():\n"
+        '    note = request.args.get("note", "")\n'
+        '    name = request.args.get("name", "")\n'
+        f"{lines}\n"
+        '    return render_template("product.html", **ctx)\n'
+    )
+    return {"app.py": source, "templates/product.html": APP["templates/product.html"]}
+
+
+def test_splat_of_a_single_assignment_dict_is_a_template_context(tmp_path):
+    for i, assignment in enumerate(['ctx = {"note": note}', "ctx = dict(note=note)"]):
+        findings = _findings(tmp_path, _splat_app(assignment), name=f"app{i}")
+        assert [(f.rule_id, f.taint.source_param) for f in findings] == [("py.xss.template.unescaped", "note")]
+
+
+def test_splat_that_is_not_a_single_dict_assignment_is_not_guessed(tmp_path):
+    cases = {
+        "twice": ('ctx = {"name": name}', 'ctx = {"note": note}'),
+        "escaped_only": ('ctx = {"name": name}',),
+    }
+    for case, assignments in cases.items():
+        assert _findings(tmp_path, _splat_app(*assignments), name=case) == [], case

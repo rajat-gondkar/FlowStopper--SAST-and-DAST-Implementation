@@ -6,6 +6,8 @@ location must land inside the named function, and every keyed runtime path must 
 
 from __future__ import annotations
 
+import ast
+
 from FlowStopper.evalkit.keyschema import load_key
 from FlowStopper.sast.index import build_index
 from FlowStopper.sast.routes import extract_routes
@@ -67,3 +69,19 @@ def test_mock_a_decoy_locations_are_real_functions():
         fn = index.function_at(decoy.file, decoy.line_start)
         # every decoy sits inside a function body (secrets decoy D08 is module-level, so allow None there)
         assert fn is not None or decoy.cwe == 798, f"{decoy.id}: no function at {decoy.file}:{decoy.line_start}"
+
+
+def test_mock_a_binds_loopback_by_default():
+    """BACKLOG 12: a local run listens on 127.0.0.1; only the container opts in to 0.0.0.0 via HOST."""
+    source = (MOCK_A / "app.py").read_text(encoding="utf-8")
+    assert "0.0.0.0" not in source
+    runs = [
+        node
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "run"
+    ]
+    assert len(runs) == 1
+    host = next(word.value for word in runs[0].keywords if word.arg == "host")
+    assert ast.unparse(host) == "os.environ.get('HOST', '127.0.0.1')"
+    assert "HOST=0.0.0.0" in (MOCK_A / "Dockerfile").read_text(encoding="utf-8")
+    assert "- HOST=0.0.0.0" in (MOCK_A / "docker-compose.yml").read_text(encoding="utf-8")
