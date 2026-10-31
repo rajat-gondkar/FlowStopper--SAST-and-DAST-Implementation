@@ -17,6 +17,15 @@
   only if explicitly enabled (P4-B1). Evidence-free vulnerabilities are not reported.
 - **Crawl bounds.** Same-origin, depth ≤ 3, ≤ 300 URLs, under a time budget — deep or JS-rendered
   apps may be under-covered.
+- **The time budget bounds the active checks, not the whole scan.** `--time-budget` (default 240 s)
+  applies to the per-parameter active checks. Endpoint discovery and the one-off host-wide passive
+  pass run before it and are not interruptible, and a unit already in flight is allowed to finish, so
+  **total DAST wall-clock can exceed the budget**. When the budget expires we stop scheduling active
+  checks, keep every finding collected so far (passive included) and set `stats.truncated = true`, so
+  a truncated scan is always visible rather than silently partial. The budget is our own operational
+  limit for bounding the active phase; the end-to-end run-time targets are the ones in spec §4, and
+  `scan_meta.json` records the real per-stage timings. A truncated scan under-reports: coverage, not
+  correctness, is what suffers.
 - **Safe payloads only (R4).** Harmless canaries/echoes/read-only probes; no destructive payloads and
   no DELETE (no PUT/PATCH without `--allow-mutating`), so some classes stay out of reach by design.
 
