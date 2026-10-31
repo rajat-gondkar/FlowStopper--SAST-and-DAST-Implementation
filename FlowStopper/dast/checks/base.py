@@ -11,7 +11,7 @@ from __future__ import annotations
 import random
 import string
 from dataclasses import dataclass, field
-from urllib.parse import quote, urlsplit, urlunsplit
+from urllib.parse import quote, urlencode, urlsplit, urlunsplit
 
 from FlowStopper import cwe, ids
 from FlowStopper.dast.baseline import Baseline, establish_baseline
@@ -63,6 +63,21 @@ def build_request(endpoint: Endpoint, param: Param, value: str) -> tuple[str, st
     return endpoint.method.upper(), url, kw
 
 
+def build_raw_query_request(endpoint: Endpoint, param: Param, raw_value: str) -> tuple[str, str, dict]:
+    """Like build_request, but splices `raw_value` into the query string **verbatim**.
+
+    Needed for Appendix B payloads that are themselves percent-encoded (the `..%2f` traversal
+    variant): httpx would re-encode the `%` and send `..%252f`, so the target would only ever see a
+    literal `%2f` instead of the separator the payload is testing for.
+    """
+    method, url, kw = build_request(endpoint, param, raw_value)
+    others = {k: v for k, v in (kw.pop("params", {}) or {}).items() if k != param.name}
+    query = urlencode(others)
+    raw = f"{param.name}={raw_value}"
+    s = urlsplit(url)
+    return method, urlunsplit((s.scheme, s.netloc, s.path, f"{query}&{raw}" if query else raw, "")), kw
+
+
 @dataclass
 class CheckContext:
     client: DastClient
@@ -91,9 +106,13 @@ class CheckContext:
             self._baselines[key] = await establish_baseline(self.client, method, url, **kw)
         return self._baselines[key]
 
-    async def send(self, endpoint: Endpoint, param: Param, payload: str) -> HttpExchange:
+    async def send(self, endpoint: Endpoint, param: Param, payload: str, *, raw_query: bool = False) -> HttpExchange:
+        """Send one payload. `raw_query` splices an already-encoded payload into the query verbatim."""
         self.sent_payloads.append(payload)
-        method, url, kw = build_request(endpoint, param, payload)
+        if raw_query and param.location is ParamLocation.QUERY:
+            method, url, kw = build_raw_query_request(endpoint, param, payload)
+        else:
+            method, url, kw = build_request(endpoint, param, payload)
         return await self.client.request(method, url, **kw)
 
 

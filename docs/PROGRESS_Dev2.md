@@ -46,7 +46,15 @@ lock files, `scripts/doctor.py`, Kiro steering. All module stubs created with ow
 
 ## Phase 2 ΓÇö depth
 | P2-A1..A6 taint/secrets/templates/runner ΓÇö A Γ¼£
-| P2-B1..B7 checks/verify/storage/correlator/Mock B ΓÇö B Γ¼£
+| P2-B1 checks [done] | P2-B2 passive | P2-B3 verify | P2-B4 runner | P2-B5 storage | P2-B6 correlator | P2-B7 Mock B — B
+  - P2-B1: `dast/checks/{cmdi,traversal,redirect}.py` — same `run(ctx, endpoint, param)` interface and
+    evidence as sqli/xss. cmdi proves execution with an evaluated arithmetic marker
+    (`echo <canary>$((A*B))X`) across the six Appendix B separators, so a plain reflection cannot
+    trigger it; traversal is a read-only `/etc/passwd` probe requiring `root:[x*!]*:0:0:`, guarded by
+    the baseline; redirect targets `<canary>.invalid` (reserved TLD) and is **never followed**.
+    Added `build_raw_query_request()` so the pre-encoded `..%2f` variant is not double-encoded (B-03).
+    13 tests incl. safe-look-alike decoys, an R4 payload-provenance assertion, a "canary host never
+    contacted" assertion, and a double-encoding regression test.
 
 ## Phase 3 ΓÇö integration Γ¼£  ┬╖  ## Phase 4 ΓÇö accuracy & bonuses Γ¼£
 ## Phase 5 ΓÇö delivery surface Γ¼£  ┬╖  ## Phase 6 ΓÇö generalisation Γ¼£  ┬╖  ## Phase 7 ΓÇö release Γ¼£
@@ -86,8 +94,17 @@ _Log_
 - 2026-10-31 ΓÇö Dev B: **Phase 1 complete** ΓÇö P1-B1 client, P1-B2 discovery (+`dast/types.py`),
   P1-B3 baseline, P1-B4 SQLi+XSS checks, P1-B5 eval metrics (+`eval` CLI). All offline-tested via
   httpx MockTransport; R3 enforced on every request, R4 payload-provenance test added, R7 redaction.
-  Logged **D-19**. `make check` green (104 tests). Next for B: Phase 2 (P2-B1 remaining checks).
+  Logged **B-02**. `make check` green (104 tests). Next for B: Phase 2 (P2-B1 remaining checks).
 - 2026-10-31 ΓÇö Dev B: **P0-J2 contract sign-off** ΓÇö reviewed `models.py`, `cwe.py`, `ids.py`,
   `keyschema.py` and declared them **final, no changes requested** (Phase 1 built against them with
   zero contract edits; CC-01 ACKed). Person 1 may now `git tag contract-v1`. (Staging/commit/push of
   Phase 1 is a human action ΓÇö the agent is hard-blocked from git writes.)
+- 2026-10-31 - Dev B: **P2-B1 complete** - the three remaining active checks
+  (`dast/checks/cmdi.py`, `traversal.py`, `redirect.py`), Appendix-B payloads only, plus
+  `build_raw_query_request()` in `checks/base.py` so the pre-encoded `..%2f` traversal variant is sent
+  faithfully instead of double-encoded (decision **B-03**). 13 new tests (safe-look-alike decoys, R4
+  provenance, canary-host-never-contacted, no-double-encoding). Verified against Dev A's merged
+  Phase 1: `make check` green (158 passed, 1 skipped - the bench-app route test self-skips until
+  `make bench-fetch`). Also completed the docs-split follow-up: grepped for the old `D-18`/`D-19`
+  ids - no code/test references existed - and repaired the provenance notes in `DECISIONS_Dev2.md`
+  that a blind find/replace had mangled. Next for B: P2-B2 (passive/misconfiguration checks).
