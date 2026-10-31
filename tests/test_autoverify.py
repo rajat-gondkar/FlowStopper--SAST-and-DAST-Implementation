@@ -17,7 +17,7 @@ import pytest
 from typer.testing import CliRunner
 
 from FlowStopper.cli import app as cli
-from FlowStopper.correlate.autoverify import auto_verify
+from FlowStopper.correlate.autoverify import AutoVerifyResult, auto_verify
 from FlowStopper.correlate.engine import correlate
 from FlowStopper.dast.config import DastConfig
 from FlowStopper.models import (
@@ -286,3 +286,24 @@ def test_cli_refuses_out_of_scope_target(tmp_path, fixture_sast, fixture_dast, f
     )
     assert result.exit_code == 1 and "out-of-scope" in result.output
     assert not out_path.exists()
+
+
+def test_cli_correlate_target_passes_allow_host_and_mutating(tmp_path, monkeypatch):
+    """`correlate --target` builds its DastConfig with the same scope options as `dast` (B-20)."""
+    from FlowStopper.correlate import commands as correlate_commands
+
+    seen = {}
+
+    async def fake_auto_verify(issues, routes, target_url, config, deadline=None):
+        seen["config"] = config
+        return AutoVerifyResult(issues=list(issues), stats={"eligible": 0, "upgraded": 0, "truncated": False})
+
+    monkeypatch.setattr(correlate_commands, "auto_verify", fake_auto_verify)
+    sast_path, dast_path, out_path = tmp_path / "sast.json", tmp_path / "dast.json", tmp_path / "issues.json"
+    sast_path.write_text(SastResult(routes=[], findings=[]).model_dump_json(), encoding="utf-8")
+    dast_path.write_text(DastResult(findings=[]).model_dump_json(), encoding="utf-8")
+    args = ["correlate", "--sast", str(sast_path), "--dast", str(dast_path), "--out", str(out_path)]
+    args += ["--target", "http://svc:8080", "--allow-host", "svc", "--allow-mutating"]
+    result = CliRunner().invoke(cli, args)
+    assert result.exit_code == 0, result.output
+    assert seen["config"].extra_allowed_hosts == ["svc"] and seen["config"].allow_mutating is True

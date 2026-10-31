@@ -24,9 +24,11 @@ from typing import Annotated, Optional
 import typer
 
 from FlowStopper import __version__
+from FlowStopper.correlate.autoverify import auto_verify
 from FlowStopper.correlate.config import CorrelateConfig
 from FlowStopper.correlate.engine import correlate
 from FlowStopper.correlate.issues import is_suppressed
+from FlowStopper.dast.commands import build_auth
 from FlowStopper.dast.config import DastConfig
 from FlowStopper.dast.runner import run_dast
 from FlowStopper.models import DastResult, Issue, Label, SastResult
@@ -85,6 +87,24 @@ def label_counts(issues: list[Issue]) -> dict[str, int]:
     return counts
 
 
+def _config_snapshot(config: DastConfig) -> dict:
+    """The DAST config for scan_meta.json / the store, without credential values (R7).
+
+    Login bodies, header and cookie values never leave memory; only their shape is recorded.
+    """
+    data = config.model_dump(mode="json")
+    auth = config.auth
+    if auth is not None:
+        login = auth.login
+        data["auth"] = {
+            "configured": True,
+            "header_names": sorted(auth.headers),
+            "cookie_names": sorted(auth.cookies),
+            "login": None if login is None else {"url": login.url, "method": login.method, "redacted": True},
+        }
+    return data
+
+
 def _write_json(path: Path, data: object) -> None:
     path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
@@ -112,8 +132,14 @@ def run_pipeline(
     dast_config: Optional[DastConfig] = None,
     correlate_config: Optional[CorrelateConfig] = None,
     db_path: Path | str = DEFAULT_DB_PATH,
+    autoverify: bool = True,
+    autoverify_budget_s: float = 60.0,
 ) -> PipelineResult:
     """Scan `source` (parsed, never executed) and the running `target`, store and write the results.
+
+    After correlation, eligible Code-only issues are auto-verified against `target` with one targeted
+    check each (spec P4-B4, B-1), within `autoverify_budget_s` seconds; `autoverify=False` skips it.
+    Authentication for DAST and auto-verify comes from `dast_config.auth`.
 
     Raises `PipelineError` when the source is not a directory, the scope guard refuses the target
     (rule R3, raised by `run_dast` before any connection) or any stage fails; the scan row in the
@@ -133,7 +159,7 @@ def run_pipeline(
 
     config_snapshot = {
         "sast": sast_config.model_dump(mode="json"),
-        "dast": dast_config.model_dump(mode="json"),
+        "dast": _config_snapshot(dast_config),
         "correlate": correlate_config.model_dump(mode="json"),
     }
     timings: dict[str, float] = {}
@@ -176,9 +202,26 @@ def run_pipeline(
             issues = correlate(sast.findings, dast.findings, sast.routes, correlate_config)
             timings["correlate"] = round(time.perf_counter() - t0, 3)
 
+            added_findings = []
+            autoverify_stats: dict = {"enabled": autoverify}
+            if autoverify:
+                stage = "autoverify"
+                t0 = time.perf_counter()
+                deadline = time.monotonic() + autoverify_budget_s
+                try:
+                    verified = asyncio.run(
+                        auto_verify(issues, sast.routes, target, dast_config, correlate_config, deadline=deadline)
+                    )
+                except ScopeError as exc:
+                    raise PipelineError("autoverify", f"refusing an out-of-scope target (rule R3): {exc}") from exc
+                issues = verified.issues
+                added_findings = list(verified.findings_added)
+                autoverify_stats.update(verified.stats)
+                timings["autoverify"] = round(time.perf_counter() - t0, 3)
+
             stage = "store"
             t0 = time.perf_counter()
-            db.save_findings(scan_id, sast.findings + dast.findings)
+            db.save_findings(scan_id, sast.findings + dast.findings + added_findings)
             db.save_issues(scan_id, issues)
             timings["store"] = round(time.perf_counter() - t0, 3)
 
@@ -210,6 +253,7 @@ def run_pipeline(
                     "dast_requests": dast.stats.get("requests"),
                     "issues": label_counts(issues),
                 },
+                "autoverify": autoverify_stats,
                 "db_path": str(db_path),
                 "config": config_snapshot,
                 "sast_stats": sast.stats,
@@ -251,20 +295,50 @@ def scan_command(
     allow_mutating: Annotated[bool, typer.Option("--allow-mutating", help="also send PUT/PATCH")] = False,
     keep_secrets: Annotated[bool, typer.Option("--keep-secrets", help="do not redact auth headers")] = False,
     seed: Annotated[int, typer.Option("--seed", help="per-scan seed for DAST canaries (reproducible)")] = 0,
+    auth_config: Annotated[
+        Optional[Path],
+        typer.Option(
+            "--auth-config",
+            help="JSON file with static headers/cookies and/or a login step (keep it git-ignored, e.g. keys/)",
+        ),
+    ] = None,
+    header: Annotated[
+        Optional[list[str]], typer.Option("--header", help="static header, 'Name: value' (repeatable)")
+    ] = None,
+    cookie: Annotated[
+        Optional[list[str]], typer.Option("--cookie", help="static cookie, 'name=value' (repeatable)")
+    ] = None,
+    autoverify: Annotated[
+        bool, typer.Option("--autoverify/--no-autoverify", help="probe Code-only issues once more (B-1)")
+    ] = True,
+    autoverify_budget: Annotated[int, typer.Option("--autoverify-budget", help="seconds for auto-verify probes")] = 60,
 ) -> None:
     """Run the full pipeline and write a prioritised issue list."""
     if fail_on:
         # The CI gate (exit code 2) is B's helper in P5-B2, wired here in P5-A2 (DECISIONS_Dev1 A-31).
         logger.warning("--fail-on %s is not implemented until P5 (P5-A2/P5-B2); ignoring it", fail_on)
+    try:
+        auth = build_auth(auth_config, header, cookie)
+    except (OSError, ValueError) as exc:
+        typer.echo(f"FlowStopper scan: bad authentication configuration: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
     dast_config = DastConfig(
         extra_allowed_hosts=list(allow_host or []),
         time_budget_s=time_budget,
         allow_mutating=allow_mutating,
         keep_secrets=keep_secrets,
         seed=seed,
+        auth=auth,
     )
     try:
-        result = run_pipeline(source, target, out, dast_config=dast_config)
+        result = run_pipeline(
+            source,
+            target,
+            out,
+            dast_config=dast_config,
+            autoverify=autoverify,
+            autoverify_budget_s=autoverify_budget,
+        )
     except PipelineError as exc:
         typer.echo(f"FlowStopper scan: {exc}", err=True)
         raise typer.Exit(code=1) from exc
@@ -272,6 +346,16 @@ def scan_command(
     meta = result.meta
     counts = meta["counts"]["issues"]
     timings = meta["timings_s"]
+    auth_stats = result.dast.stats.get("auth") or {}
+    if auth_stats.get("attempted"):
+        state = "ok" if auth_stats.get("ok") else "FAILED"
+        typer.echo(f"scan: login {state} ({auth_stats.get('detail') or auth_stats.get('status')})")
+    av = meta.get("autoverify") or {}
+    if av.get("enabled") and "eligible" in av:
+        typer.echo(
+            f"scan: auto-verify upgraded {av.get('upgraded', 0)} of {av['eligible']} eligible code-only issue(s)"
+            + (" [TRUNCATED: auto-verify budget reached]" if av.get("truncated") else "")
+        )
     typer.echo(
         f"scan: {meta['counts']['routes']} route(s), {meta['counts']['sast_findings']} SAST finding(s), "
         f"{meta['counts']['dast_findings']} DAST finding(s)"

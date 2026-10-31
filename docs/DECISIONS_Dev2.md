@@ -12,6 +12,11 @@ prefix keeps our ids from ever colliding with Dev A's `A-` ids.
 > citation in `correlate/issues.py` is correct: D-12 is a *shared* Phase-0 decision and still lives in
 > [`DECISIONS.md`](DECISIONS.md).
 
+- **B-20 (`correlate --target` scope options match `dast`):** `correlate --target` now takes
+  `--allow-host` and `--allow-mutating` and passes them into the auto-verify `DastConfig`, so
+  auto-verify allows exactly what the `dast` run allowed. Test:
+  `tests/test_autoverify.py::test_cli_correlate_target_passes_allow_host_and_mutating`. Applied on Dev
+  B's behalf (final-review note).
 - **B-19 (unknown-path XSS finding id is seed-independent):** `probe_unknown_path` used the probed path,
   which holds the per-scan canary, in its finding id, so the id changed with `--seed` (FR-6). The id
   now uses a fixed key (`<unknown-path>`); the real path stays in `runtime.path`. Test:
