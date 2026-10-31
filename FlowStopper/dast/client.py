@@ -10,6 +10,7 @@ stored as the excerpt). Every exchange is recorded for the audit trail.
 from __future__ import annotations
 
 import asyncio
+import json as _json
 import shlex
 import time
 from dataclasses import dataclass, field
@@ -19,14 +20,42 @@ from urllib.parse import urljoin, urlsplit
 
 import httpx
 
-from FlowStopper.dast.config import DastConfig
-from FlowStopper.scope import ScopeGuard
+from FlowStopper.dast.config import DastConfig, LoginStep
+from FlowStopper.scope import ScopeError, ScopeGuard
 
 BODY_MAX = 64 * 1024  # kept in memory for checks to analyse
 STORED_MAX = 2 * 1024  # persisted excerpt (Finding.response_excerpt)
 REDACTED = "<redacted>"
 REDACT_HEADERS = frozenset({"authorization", "cookie"})
 MAX_REDIRECT_HOPS = 5
+
+
+@dataclass
+class AuthResult:
+    """Outcome of the login step, surfaced in `DastResult.stats["auth"]`.
+
+    `ok` is True when nothing was configured, so callers can treat it as "the scan may proceed".
+    The token value itself is never stored here (R7) - only which header it was placed in.
+    """
+
+    configured: bool
+    attempted: bool
+    ok: bool
+    status: Optional[int] = None
+    token_header: Optional[str] = None
+    cookies: bool = False
+    detail: str = ""
+
+    def as_stats(self) -> dict:
+        return {
+            "configured": self.configured,
+            "attempted": self.attempted,
+            "ok": self.ok,
+            "status": self.status,
+            "token_header": self.token_header,
+            "cookies": self.cookies,
+            "detail": self.detail,
+        }
 
 
 @dataclass
@@ -102,12 +131,16 @@ class DastClient:
         self._rate_lock = asyncio.Lock()
         self._last_send = 0.0
         self.exchanges: list[HttpExchange] = []
+        # Static credentials from config, with explicit arguments taking precedence.
+        auth = self._config.auth
+        merged_headers = {**(auth.headers if auth else {}), **(headers or {})}
+        merged_cookies = {**(auth.cookies if auth else {}), **(cookies or {})}
         timeout = httpx.Timeout(self._config.total_timeout_s, connect=self._config.connect_timeout_s)
         self._client = httpx.AsyncClient(
             timeout=timeout,
             follow_redirects=False,
-            headers=headers,
-            cookies=cookies,
+            headers=merged_headers or None,
+            cookies=merged_cookies or None,
             transport=transport,
         )
 
@@ -128,6 +161,11 @@ class DastClient:
     @property
     def keep_secrets(self) -> bool:
         return self._config.keep_secrets
+
+    @property
+    def default_header_names(self) -> frozenset[str]:
+        """Lower-cased names of the headers sent on every request (static auth + any login token)."""
+        return frozenset(name.lower() for name in self._client.headers)
 
     async def _rate_wait(self) -> None:
         rps = self._config.max_rps
@@ -225,6 +263,94 @@ class DastClient:
         """POST credentials and keep the resulting cookies in the jar. Returns True on a 2xx/3xx."""
         ex = await self.request("POST", url, data=data, json=json, headers=headers)
         return 200 <= ex.status < 400
+
+    # ------------------------------------------------------------------ authentication (P4-B1 item 7)
+    def set_default_header(self, name: str, value: str) -> None:
+        """Send `name` on every later request (where a session token belongs)."""
+        self._client.headers[name] = value
+
+    async def authenticate(self) -> AuthResult:
+        """Run the configured login step so later checks reach routes that need a session.
+
+        Returns an AuthResult either way: a failed login is reported, not raised, because an
+        unauthenticated scan still finds the public half of an app. The runner records it in
+        `stats["auth"]` and logs a warning so a silently useless scan is impossible to miss.
+        """
+        auth = self._config.auth
+        if auth is None or auth.login is None:
+            return AuthResult(configured=auth.is_configured if auth else False, attempted=False, ok=True)
+
+        step = auth.login
+        try:
+            ex = await self.request(
+                step.method,
+                step.url,
+                data=step.form_data,
+                json=step.json_body,
+                headers=step.headers or None,
+            )
+        except ScopeError:
+            raise  # an out-of-scope login URL is a configuration error, not a login failure (R3)
+        except httpx.HTTPError as exc:
+            return AuthResult(configured=True, attempted=True, ok=False, detail=f"{type(exc).__name__}: {exc}")
+
+        if not 200 <= ex.status < 400:
+            return AuthResult(configured=True, attempted=True, ok=False, status=ex.status, detail="login rejected")
+
+        got_cookies = bool(ex.set_cookies) or bool(self._client.cookies)
+        if not step.expects_token:
+            # Cookie-based session: the jar already holds whatever was set.
+            return AuthResult(
+                configured=True,
+                attempted=True,
+                ok=got_cookies,
+                status=ex.status,
+                cookies=got_cookies,
+                detail="session cookie stored" if got_cookies else "login succeeded but set no cookie",
+            )
+
+        token = _extract_token(ex, step)
+        if not token:
+            where = step.token_response_header or f"json:{step.token_json_field}"
+            return AuthResult(
+                configured=True, attempted=True, ok=False, status=ex.status, detail=f"no token found in {where}"
+            )
+        self.set_default_header(step.token_request_header, f"{step.token_prefix}{token}")
+        return AuthResult(
+            configured=True,
+            attempted=True,
+            ok=True,
+            status=ex.status,
+            token_header=step.token_request_header,
+            cookies=got_cookies,
+            detail=f"token copied to {step.token_request_header}",
+        )
+
+
+def _json_path(payload: object, dotted: str) -> Optional[str]:
+    """Walk a dotted path into a decoded JSON body; None if any step is missing."""
+    current = payload
+    for part in dotted.split("."):
+        if not isinstance(current, dict) or part not in current:
+            return None
+        current = current[part]
+    return str(current) if isinstance(current, (str, int, float)) else None
+
+
+def _extract_token(ex: HttpExchange, step: LoginStep) -> Optional[str]:
+    """The session token from a login response, by header or by JSON field."""
+    if step.token_response_header:
+        for name, value in ex.response_headers.items():
+            if name.lower() == step.token_response_header.lower() and value.strip():
+                return value.strip()
+        return None
+    if step.token_json_field:
+        try:
+            payload = _json.loads(ex.body)
+        except ValueError:
+            return None
+        return _json_path(payload, step.token_json_field)
+    return None
 
 
 def _body_repr(data: Optional[dict], json: object) -> Optional[str]:

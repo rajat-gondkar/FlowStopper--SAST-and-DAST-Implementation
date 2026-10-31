@@ -12,6 +12,25 @@ prefix keeps our ids from ever colliding with Dev A's `A-` ids.
 > citation in `correlate/issues.py` is correct: D-12 is a *shared* Phase-0 decision and still lives in
 > [`DECISIONS.md`](DECISIONS.md).
 
+- **B-09 (DAST authentication, P4-B1 / BACKLOG item 7):** (a) Spec P1-B1 asks for "static
+  headers/cookies, or a login step". `AuthConfig` covers both, and the login step also handles a
+  token returned in a **response header** (what the benchmark app does) or a JSON body field, copied
+  onto later requests as a configurable header with an optional prefix. Cookie sessions need no
+  configuration beyond the login step - the client's jar already keeps them. (b) Credentials are
+  passed with `--auth-config FILE`, **not** inline flags: a password on the command line is visible
+  in shell history and in the process list to every user on the machine. Only `--header`/`--cookie`
+  (non-secret by convention) are inline. (c) The login runs **before discovery**, because a route
+  behind a session answers 401/403 to everything, so discovery and every check would otherwise be
+  probing the login wall rather than the app. (d) A failed login is **reported, not fatal**: it lands
+  in `stats["auth"]` and logs a WARNING, because an unauthenticated scan still finds the public half
+  of an app - but an out-of-scope login URL raises `ScopeError`, since that is a configuration error,
+  not a login failure (R3). (e) The token is never stored in `AuthResult` or in the stats, only the
+  name of the header it was placed in, and it is redacted from the stored request text and the repro
+  curl (R7). (f) **`build_request` now leaves alone any header parameter whose name the client
+  already sends.** A route that *reads* `Authorization` is reported by SAST as having an
+  `Authorization` header parameter, and filling every non-injected parameter with a benign value was
+  overwriting the real session token with `test` - so the first authenticated benchmark run scored
+  *identically* to the unauthenticated one. Two regression tests cover it.
 - **B-08 (eval on stored scans + the organiser-key converter, P3-B1):** (a) `eval --scan <id>` reads
   that scan's **snapshot** (`scan_issues`), not the latest state of each issue, so an old scan scores
   as it was reported; `--scan latest` picks the newest *completed* scan, and a failed or running scan

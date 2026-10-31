@@ -134,7 +134,38 @@ lock files, `scripts/doctor.py`, Kiro steering. All module stubs created with ow
     integration test (normally self-skipped) also passed while Mock A was up. Not committed to
     `docs/metrics/`: the baseline is the joint P3-J1 task, against the real app.
 
-## Phase 4 ΓÇö accuracy & bonuses Γ¼£
+## Phase 4 — accuracy & bonuses (Dev B)
+| item 7 login [done] | item 1 path params | item 2 cmdi differential | item 3 SQLi status rule
+| item 4 metrics precedence | item 5 traceback XSS | item 8 DAST half | P4-B3 explain | P4-B4 auto-verify
+
+### item 7 - DAST login support (BACKLOG item 7, spec P1-B1) - **done**
+`AuthConfig`/`LoginStep` in `dast/config.py`; `DastClient.authenticate()` runs the login before
+discovery and copies a token from a response header or a JSON body field onto later requests;
+`FlowStopper dast --auth-config FILE` (credentials in a file, never on the command line - B-09).
+Found and fixed a second bug while proving it: a route that *reads* `Authorization` is listed by SAST
+as having an `Authorization` **header param**, and `build_request` was filling it with a benign value,
+clobbering the real token - the first authenticated bench run scored identically to no auth.
+
+| Metric | bench before | bench after | Mock A before | Mock A after |
+|---|---|---|---|---|
+| Code detection | 3/4 75% | 3/4 75% | 13/13 100% | 13/13 100% |
+| Runtime detection | 1/3 33.3% **below** | **2/3 66.7% good** | 10/13 76.9% | 10/13 76.9% |
+| Correct links | 0/2 0% **below** | **1/2 50%** | 7/10 70% | 7/10 70% |
+| Wrong links | 0/0 n/a | 0/1 0% great | 0/7 0% | 0/7 0% |
+| False alarms | 0/9 0% | 0/10 0% | 1/21 4.8% | 1/21 4.8% |
+| Unplanted | 4 | 5 | 5 | 5 |
+
+VF01 (the SQLi behind the login) is now **Confirmed** with `proof=error`; it was Code-only before.
+Mock A is unchanged, as expected - it has no authenticated routes. Matches the backlog's predicted
+impact exactly (runtime 1/3 -> 2/3, links 0/2 -> 1/2). Correct links reads "below" at 50% because the
+spec's target is strictly `>50%`. 19 new tests (`tests/test_dast_auth.py`), `make check` green:
+**432 passed, 1 skipped** (was 414 + 2; the bench route test now runs because the source is fetched).
+
+> **Needs Dev A:** `FlowStopper scan` (`pipeline.py`) has no way to pass auth config, so the bench
+> numbers above were produced with the per-stage CLI (`sast` -> `dast --auth-config` -> `correlate` ->
+> `eval`). The pipeline needs an equivalent option before `make bench` or a real-app scan can
+> authenticate - already noted as the Dev A follow-up under backlog item 7.
+
 ## Phase 5 ΓÇö delivery surface Γ¼£  ┬╖  ## Phase 6 ΓÇö generalisation Γ¼£  ┬╖  ## Phase 7 ΓÇö release Γ¼£
 
 ## Third-party benchmark (we45 Vulnerable-Flask-App) ΓÇö cross-phase
