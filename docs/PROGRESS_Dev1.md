@@ -45,7 +45,13 @@ started. Dev B tracks their own in [`PROGRESS_Dev2.md`](PROGRESS_Dev2.md). Full 
   alarms (ceiling 1), cross-file M01/M02/M05 all matched, every injection finding carrying
   `taint.source_param` and real `entry_routes`. `make check` green (229 tests).
 
-## Phase 3+ — [ ] pipeline/scan (P3-A1) · [ ] API/CLI/containers (P5) · [ ] README/THIRD_PARTY (P7).
+## Phase 3+ — [x] pipeline/scan (P3-A1) · [ ] API/CLI/containers (P5) · [ ] README/THIRD_PARTY (P7).
+- [x] P3-A1 `pipeline.py` `run_pipeline` + `FlowStopper scan` — SAST → DAST (seeded with routes) →
+  correlate → SQLite → `issues.json` + `scan_meta.json`. **Mock A live: 25 routes, 14 SAST + 19 DAST
+  findings (634 requests, DAST 2.1 s, total 2.1 s), 21 issues (7 confirmed, 6 code-only, 8 runtime-only;
+  1 suppressed); eval code 13/13, runtime 10/13, correct links 7/10, wrong links 0/7, false alarms
+  1/21**, identical to the manual run; second scan gives identical issue ids. Decisions A-30..A-34.
+  `make check` green (383 passed, 1 skipped).
 
 ## Third-party benchmark (we45 Vulnerable-Flask-App) — Dev A owned
 - [x] Choose app + log (D-16); `make bench-fetch`/`make bench`; source-verified `answer_key.json`;
@@ -94,6 +100,9 @@ _Log_
   duplicate found and removed: the non-Python file walk and the size-capped text read now live once
   in `sast/textfiles.py` (A-29). `make check` green (229 tests), Mock A still 25 routes / 14
   findings, accuracy gate 6 passed.
+- 2026-10-31 — **P3-A1 done**: `FlowStopper scan` runs the whole pipeline in one command; on live Mock A
+  it reproduces the manual sast→dast→correlate run exactly (21 issues, eval 13/13 · 10/13 · 7/10 ·
+  0/7 · 1/21). 10 tests in `tests/test_pipeline.py` (1 live, skips when Mock A is down).
 
 ## Phase 4 backlog (from the Phase 2 semantic review — all misses, never wrong answers)
 Carry these into **P4-A1** (generic-rule backlog) / **P4-A2** (B-2 suppression):
