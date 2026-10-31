@@ -65,7 +65,10 @@ report(not tracked, "no organisers' files tracked by git (R5)", f"git rm --cache
 for d, why in (("target_src", "organisers' app source"), ("keys", "answer key for the organisers' app")):
     present = (ROOT / d).is_dir() and any((ROOT / d).iterdir())
     report(
-        present, f"{d}/ present ({why}; out-of-band, never committed)", f"copy it into {d}/ (see docs/SETUP.md)", False
+        present,
+        f"{d}/ (optional until you scan the real app: {why}; out-of-band, never committed)",
+        f"copy it into {d}/ when you have it (see docs/SETUP.md)",
+        False,
     )
 
 for port, who in ((5050, "Mock A"), (8090, "Mock B"), (8000, "FlowStopper API")):
