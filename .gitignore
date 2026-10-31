@@ -32,6 +32,9 @@ venv/
 .coverage
 htmlcov/
 
+# ---- AI workflow task state (plans, reviews, verdicts) — local only ----
+.agents/
+
 # ---- editors / OS ----
 .DS_Store
 .idea/
