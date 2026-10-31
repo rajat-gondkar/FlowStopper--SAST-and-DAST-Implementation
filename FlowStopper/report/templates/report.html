@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>FlowStopper report</title>
+<style>
+body { font-family: system-ui, sans-serif; margin: 2rem; color: #222; }
+table { border-collapse: collapse; width: 100%; }
+th, td { border: 1px solid #ccc; padding: .3rem .5rem; text-align: left; vertical-align: top; }
+th { background: #f2f2f2; }
+</style>
+</head>
+<body>
+<h1>FlowStopper report</h1>
+<p>Target: {{ meta.get("target") or "unknown" }} &middot; Scan: {{ meta.get("scan_id") or "n/a" }}</p>
+<p>{{ total }} reported issue(s): {{ counts["confirmed"] }} confirmed, {{ counts["code_only"] }} code only,
+{{ counts["runtime_only"] }} runtime only; {{ suppressed|length }} suppressed.</p>
+<table>
+<thead><tr><th>#</th><th>Label</th><th>Severity</th><th>Risk</th><th>CWE</th><th>Title</th><th>ID</th></tr></thead>
+<tbody>
+{% for issue in reported %}
+<tr><td>{{ loop.index }}</td><td>{{ issue.label.value }}</td><td>{{ issue.severity.value }}</td><td>{{ issue.risk }}</td><td>CWE-{{ issue.cwe }}</td><td>{{ issue.title }}</td><td>{{ issue.id }}</td></tr>
+{% endfor %}
+</tbody>
+</table>
+</body>
+</html>
