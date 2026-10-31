@@ -4,6 +4,36 @@ Dev A's own design decisions (ids `A-NN`, newest first). Joint/Phase-0 decisions
 [`DECISIONS.md`](DECISIONS.md); Dev B's are in [`DECISIONS_Dev2.md`](DECISIONS_Dev2.md). Using an
 `A-` prefix keeps our ids from ever colliding with Dev B's `B-` ids.
 
+- **A-35 (unique scan ids; meta before "completed")**: `Storage.make_scan_id` hashes a
+  seconds-precision timestamp, so two scans of the same source and target in one second would share
+  and overwrite one `scans` row. `run_pipeline` now passes an explicit `scan_id` and adds a `#n`
+  suffix to the hashed material while that id already exists (no change to Dev B's `storage.py`).
+  `scan_meta.json` is written inside the guarded block, before `finish_scan(completed)`, and
+  `start_scan` errors become `PipelineError("store")`, so the store and the CLI exit code always agree.
+- **A-34 (`--seed` on `scan`, default 0)**: `DastConfig.seed` is the per-scan seed and defaults to
+  `None`, which the checks already treat as 0. `scan` exposes `--seed` (default 0, same as `dast`)
+  and the pipeline resolves `None` to 0 before running, so the seed in `scan_meta.json`, the DB row
+  and the DAST stats is the value actually used.
+- **A-33 (stage failures and the scan row)**: `run_pipeline` raises `PipelineError(stage, ...)` for a
+  bad source dir (before anything is stored), a scope-guard refusal (`ScopeError` from `run_dast`,
+  which checks before any connection) or any exception inside a stage; the scan row is then
+  finished as `failed` with the timings so far, and `scan` exits 1. Exit 2 stays reserved for the CI
+  gate. The target is not pre-checked before SAST, so the R3 WARNING for `--allow-host` is logged
+  once, by `run_dast`'s own guard; the cost is a few seconds of SAST before a refusal.
+- **A-32 (storage location)**: `Storage`'s default path (`.flowstopper/scans.db`, git-ignored),
+  not a DB per `--out`. Simpler, and it gives the P5 API, `eval --scan` and FR-6 upserts one shared
+  store across scans. `run_pipeline(db_path=...)` overrides it (tests use `tmp_path`).
+- **A-31 (`--fail-on` is a no-op until P5)**: the CI gate (exit code 2) is Dev B's P5-B2 helper in
+  `report/sarif.py`, which is still a stub, so `scan --fail-on` logs a WARNING ("not implemented
+  until P5") and is ignored. P5-A2 wires it to B's helper; no gate logic lives in `pipeline.py`.
+- **A-30 (`run_pipeline` contract)**: a sync function `run_pipeline(source, target, out_dir, *,
+  sast_config, dast_config, correlate_config, db_path) -> PipelineResult` that drives `run_dast`
+  with `asyncio.run`, so the P5 API must call it from a worker thread (FastAPI runs a sync
+  background task in its thread pool). `issues.json` is exactly what `correlate` returns (same
+  serialisation as `FlowStopper correlate`, suppressed issues included, `first/last_seen_scan`
+  left unset) so it holds no scan id, timestamp or timing; all run data goes to `scan_meta.json`
+  (scan id, start/finish, seed, `truncated`, per-stage `timings_s`, tool versions, counts, configs,
+  SAST/DAST stats) and the DB.
 - **A-29 (one text-file policy for the non-Python scanners)**: the secrets scan (P2-A4) and the
   template scan (P2-A5) were each walking the tree and reading files themselves, so `exclude_dirs`
   and `max_text_file_bytes` were honoured by two copies of the same code that could drift apart.
