@@ -39,18 +39,25 @@ def parse_fail_on(spec: str) -> tuple[str, Severity]:
     return label, threshold
 
 
-def gate_tripped(issues: list[Issue], spec: str) -> bool:
-    """True if any non-suppressed issue matches the label (or "any") with severity >= threshold.
+def gate_matches(issues: list[Issue], spec: str) -> list[Issue]:
+    """The non-suppressed issues that trip the gate (label matches or "any", severity >= threshold).
 
     Raises ValueError (from `parse_fail_on`) for a malformed spec.
     """
     label, threshold = parse_fail_on(spec)
     limit = SEVERITY_RANK[threshold]
-    for issue in issues:
-        if is_suppressed(issue):
-            continue
-        if label != ANY_LABEL and issue.label.value != label:
-            continue
-        if SEVERITY_RANK.get(issue.severity, len(SEVERITY_RANK)) <= limit:
-            return True
-    return False
+    return [
+        issue
+        for issue in issues
+        if not is_suppressed(issue)
+        and (label == ANY_LABEL or issue.label.value == label)
+        and SEVERITY_RANK.get(issue.severity, len(SEVERITY_RANK)) <= limit
+    ]
+
+
+def gate_tripped(issues: list[Issue], spec: str) -> bool:
+    """True if any non-suppressed issue matches the label (or "any") with severity >= threshold.
+
+    Raises ValueError (from `parse_fail_on`) for a malformed spec.
+    """
+    return bool(gate_matches(issues, spec))

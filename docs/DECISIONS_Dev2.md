@@ -12,6 +12,43 @@ prefix keeps our ids from ever colliding with Dev A's `A-` ids.
 > citation in `correlate/issues.py` is correct: D-12 is a *shared* Phase-0 decision and still lives in
 > [`DECISIONS.md`](DECISIONS.md).
 
+- **B-26 (`report` CLI shape and exit codes, P5 step 5):** the old stub's `--scan/--format/--out` were
+  replaced by the agreed `--issues/--meta/--html/--sarif/--md` (one run can write all three) plus
+  `--fail-on`, so CI can gate on an issues file without rescanning. `--meta` is explicit (no sibling
+  auto-discovery). `--issues` is checked in code rather than marked required, because Click's
+  usage-error exit code is 2, which would be indistinguishable from "gate tripped"; every input error
+  exits 1. Reports are written before the gate decides, so a failing CI job still has its artefacts.
+  Reading a stored scan (`--scan`) was not requested and is left out (YAGNI).
+- **B-25 (fix suggestions set in the correlator; fixture change, P5-B3):** every issue built by
+  `correlate()` (and so by auto-verify, which reuses `confirmed_issue`) gets
+  `fix = report.fixes.fix_for(issue)`. **Why `fixtures/expected_issues.json` changed:** the golden test
+  requires the correlator to reproduce that file exactly, and it had `"fix": null` everywhere. The only
+  diff is those 9 `fix` values (ids, order, labels, risk, reasons untouched). It was regenerated with
+  `make fixtures`; to do that, `scripts/build_fixtures.py` (shared "both maintain" scaffold) gained one
+  line that fills `fix` via `fix_for` instead of hand-writing nine paragraphs of presentation text.
+  The fix wording itself is pinned by `tests/test_report_fixes.py`. Templates are keyed by
+  `CweEntry.fix_key` (family); code examples use the issue's parameter name as the variable unless it
+  is a keyword, a builtin (`next`, `id`, ...) or a name the example already uses, then `value`.
+- **B-24 (SARIF shape, P5-B2):** results only for reported (non-suppressed) issues, matching the HTML
+  table and the gate. `region` holds only the offending lines; the snippet's context lines go in
+  `contextRegion`. Runtime-only issues have no `locations` (SARIF allows that; inventing a code
+  location would be wrong) and carry the proof in `webRequest`/`webResponse`. The DAST client stores
+  only a body excerpt (no status line), so `webResponse` is then `{protocol, body}` plus `statusCode`
+  when a check recorded one in `raw.status`; a full status line, when present, is parsed. `partialFingerprints`
+  uses the key `flowstopperIssueId/v1`. Rules get `properties."security-severity"` (the CWE's CVSS base
+  score) so GitHub code scanning ranks them.
+- **B-23 (HTML detail views on one page, P5-B1):** the spec mentions "per-issue detail pages"; each
+  issue's detail is an anchored `<article id="issue-<id>">` on the same page, linked from the table, so
+  the report stays one self-contained file (no scripts, works offline). Snippet line numbers follow the
+  SAST snippet shape (one line of leading context unless the finding starts on line 1); the offending
+  `line_start..line_end` lines are highlighted.
+- **B-22 (mask hard-coded secret values in reports, P5-B1):** for issues in the hard-coded secret
+  family (CWE 798/259/321) every quoted literal in the displayed snippet, or the value of an unquoted
+  `KEY = value` / `KEY: value` line (.env/.ini/YAML), is shown as its first 2 characters + `***`
+  (values of 2 characters or fewer become `***`); comment lines are left alone. Applied in
+  `report/common.display_snippet`, so HTML, SARIF and Markdown all mask the same way. The stored
+  issues.json is unchanged (the SAST finding's own `raw.value_redacted` was already redacted). Reason:
+  a report gets shared; it should prove the secret is there without republishing it.
 - **B-21 (CI gate semantics, P5-B2 / B-6):** `--fail-on` is `<label>:<severity>` with label in
   `confirmed | code_only | runtime_only | any` and a `Severity` value, case-insensitive, surrounding
   whitespace ignored; anything else (including the hyphenated `code-only`) is a `ValueError`, so a typo

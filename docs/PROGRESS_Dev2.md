@@ -360,6 +360,56 @@ endpoints, 508 requests.
   one run, rule per CWE, result per reported issue) and `render_markdown`, all `(issues, meta=None)`.
   Names and signatures are frozen for Dev A's `api.py` / `pipeline.py`. 28 tests
   (`tests/test_report_gate.py`, `tests/test_report_api.py`); `make check` 564 passed, 1 skipped.
+- P5-B1 done: `render_html` is one offline page (inline CSS, no scripts/fonts/images, light + dark via
+  `prefers-color-scheme`): summary header (target, source, scan time, duration, label stat cards,
+  severity bar), prioritised table, per-issue detail cards (label, risk/CVSS/link score, URL + method
+  + param + payload + proof + evidence, curl, raw request/response, file:line + numbered snippet with
+  the offending lines highlighted, source param + call chain, CWE + OWASP links, "why these were
+  linked" with weights, fix, other merged findings) and a collapsed Suppressed section explaining every
+  suppress_reason. Jinja2 autoescape, never `|safe` (R7); CWE-798-family snippet values masked (B-22);
+  detail views are anchored sections of the same page (B-23). Shared helpers in `report/common.py`.
+  32 tests (`tests/test_report_html.py`); `make check` 596 passed, 1 skipped.
+- P5-B2 done: `to_sarif` emits SARIF 2.1.0, one run (`FlowStopper` driver + version), a rule per CWE
+  (`security-severity`, OWASP tag), a result per reported issue with level by severity, relative
+  `physicalLocation` (SRCROOT) + region/contextRegion snippets, `webRequest`/`webResponse` parsed from
+  the stored exchange (unparseable parts fall back to `properties`), `partialFingerprints` = issue id
+  and `properties` {label, risk, cwe, owasp, url, param, ...} (B-24). Validated once against the
+  official OASIS 2.1.0 JSON schema: 0 errors on the fixtures and the last Mock A scan. 15 tests
+  (`tests/test_report_sarif.py`); the CLI gate exit-code test lands with `report --fail-on` (step 5).
+  `make check` 611 passed, 1 skipped.
+- P5-B3 done: `report/fixes.fix_for(issue)` - one template per CWE family (sqli, cmdi, xss, traversal,
+  redirect, secrets, headers, cookies, CORS, verbose errors, info exposure, directory listing) with
+  per-CWE wording inside a family and a generic fallback; each is "What is wrong" (names the
+  function/file:line or route and the parameter) + a short code example + one prevention tip;
+  deterministic, no network. The correlator sets `Issue.fix` on every issue (`engine.with_fix`, so
+  auto-verify upgrades keep it); reports fall back to `fix_for` for older issues.json files.
+  `fixtures/expected_issues.json` regenerated with `make fixtures`: only the 9 `fix` fields changed
+  (B-25; one-line change in `scripts/build_fixtures.py`). 37 tests (`tests/test_report_fixes.py`);
+  `make check` 649 passed, 1 skipped.
+- Step 4 done: `render_markdown` writes a readable findings list (D-03): header (target, source, scan,
+  duration, counts), prioritised table linking to anchored per-issue sections (label, severity/risk/
+  CVSS, CWE + OWASP, request/param/payload/proof/evidence, file:line + function + source param + call
+  chain, numbered snippet with `>` on the offending lines, why linked, curl, fix) and the suppressed
+  table with explained reasons. Prose is entity-escaped (no raw HTML from scan data), inline code and
+  fences survive backticks, table cells escape `|`, secrets masked. 8 tests
+  (`tests/test_report_markdown.py`); `make check` 657 passed, 1 skipped.
+- Step 5 done: `FlowStopper report --issues issues.json [--meta scan_meta.json] [--html F] [--sarif F]
+  [--md F] [--fail-on <label>:<severity>]` writes the requested formats (parent dirs created, UTF-8,
+  SARIF pretty-printed, byte-identical across runs) and then applies the gate: exit 2 when tripped
+  (listing the matching issues), 0 otherwise; every input error (missing `--issues`, nothing to do,
+  bad gate spec, unreadable/invalid issues or meta) exits 1, never 2 (B-26). Added
+  `gate.gate_matches` (additive; `gate_tripped` unchanged). 13 tests incl. the CLI gate exit-code test
+  (`tests/test_report_cli.py`); `make check` 670 passed, 1 skipped.
+- Live check (Mock A, debug on, :5050, `apps/mock_a` run with `~/fs-mocka/venv` - `~/mocka-venv` does
+  not exist): `scan` -> 27 issues (8 confirmed, 5 code-only, 6 runtime-only reported; 8 suppressed),
+  9.5 s, same buckets as the end of Phase 4; all 27 carry a `fix`. `report` wrote r.html / r.sarif /
+  r.md; `--fail-on confirmed:high` exited 2. HTML checked by eye in light and dark (summary, table,
+  details, raw exchange, suppressed bucket with reasons): no `<script>`/external refs, none of the 3
+  hard-coded secret values appear in any format. SARIF: 0 errors against the official OASIS 2.1.0
+  schema, 19 results (13 with code locations, 14 with webResponse). Found and fixed during the check:
+  the live DAST client stores a body-only response excerpt, so SARIF now puts it in `webResponse.body`
+  (+ a recorded `status`) instead of dropping to `properties`; evidence text no longer breaks
+  mid-word. `make check` 671 passed, 1 skipped with Mock A stopped (672 passed, 0 skipped while it ran).
 
 ## Phase 6 — generalisation ⬜  ·  ## Phase 7 — release ⬜
 
