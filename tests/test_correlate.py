@@ -172,6 +172,16 @@ def test_suppressed_code_is_never_linked():
     assert any(is_suppressed(i) for i in issues)
 
 
+def test_suppressed_runtime_is_never_linked_and_sorts_suppressed():
+    code = _code(79, "svc/db.py", 3, "svc.db.q", param="id", chain=("views.a.handler",), entry=("GET /a",))
+    runtime = _runtime(79, "GET /a", "id").model_copy(update={"suppressed": True})
+    assert generate_candidates([code], [runtime], [ROUTE], CorrelateConfig()) == []
+    issues = correlate([code], [runtime], [ROUTE])
+    assert not [i for i in issues if i.label is Label.CONFIRMED]
+    rt_issue = next(i for i in issues if i.label is Label.RUNTIME_ONLY)
+    assert is_suppressed(rt_issue) and issues[-1].id == rt_issue.id
+
+
 def test_different_cwe_family_is_never_linked():
     code = _code(79, "svc/db.py", 3, "svc.db.q", param="id", entry=("GET /a",))
     issues = correlate([code], [_runtime(89, "GET /a", "id")], [ROUTE])

@@ -2,8 +2,8 @@
 
 Read-only probe for one benign, universally present file (`/etc/passwd`); a finding needs the
 response to match `root:[x*!]*:0:0:`. Nothing is written, nothing outside that single path is
-requested. The pre-encoded `..%2f` variant is sent with a raw query string so the target receives
-the encoding the payload is actually testing (see docs/DECISIONS_Dev2.md B-03).
+requested. The pre-encoded `..%2f` variant is spliced verbatim into the query string or path segment
+so the target receives the encoding the payload is actually testing (docs/DECISIONS_Dev2.md B-03, B-11).
 """
 
 from __future__ import annotations
@@ -40,8 +40,9 @@ async def run(ctx: CheckContext, endpoint: Endpoint, param: Param) -> list[Findi
         return []
 
     for payload, raw_query in PAYLOADS:
-        # the raw-query form only applies to query params; skip it elsewhere (it would be re-encoded)
-        if raw_query and param.location is not ParamLocation.QUERY:
+        # the pre-encoded form can only be sent verbatim in a query string or a path segment; skip it
+        # elsewhere (a form/JSON body would re-encode it)
+        if raw_query and param.location not in (ParamLocation.QUERY, ParamLocation.PATH):
             continue
         ex = await ctx.send(endpoint, param, payload, raw_query=raw_query)
         m = PASSWD_RE.search(ex.body)

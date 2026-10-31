@@ -129,6 +129,25 @@ async def test_runner_reports_passive_findings():
     assert result.stats["passive_findings"] >= 1
 
 
+async def test_unknown_path_probe_runs_once_per_scan():
+    result = await _scan()  # the fixture's 404 page does not reflect the path
+    assert result.stats["unknown_path_probe"] == 0
+    assert not any(f.rule_id == "dast.xss.unknown_path" for f in result.findings)
+
+
+async def test_unknown_path_probe_reports_a_reflecting_404_handler():
+    def app_with_reflecting_404(request: httpx.Request) -> httpx.Response:
+        resp = vulnerable_app(request)
+        if resp.status_code == 404:
+            return httpx.Response(404, text=f"<p>{request.url.path} not found</p>", headers=HEADERS_HTML)
+        return resp
+
+    result = await _scan(handler=app_with_reflecting_404)
+    hits = [f for f in result.findings if f.rule_id == "dast.xss.unknown_path"]
+    assert result.stats["unknown_path_probe"] == 1 and len(hits) == 1
+    assert hits[0].runtime.route_id is None and hits[0].runtime.param is None
+
+
 async def test_decoy_endpoint_produces_no_finding():
     result = await _scan()
     paths = {f.runtime.path for f in result.findings if f.runtime and f.runtime.param}

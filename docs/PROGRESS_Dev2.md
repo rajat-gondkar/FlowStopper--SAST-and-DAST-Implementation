@@ -166,6 +166,187 @@ spec's target is strictly `>50%`. 19 new tests (`tests/test_dast_auth.py`), `mak
 > `eval`). The pipeline needs an equivalent option before `make bench` or a real-app scan can
 > authenticate - already noted as the Dev A follow-up under backlog item 7.
 
+### Phase 4 Dev B starting point (after Dev A P4 + item 7)
+Fresh baseline on branch `b/p4-dast` off main `e68add6` (Dev A Phase 4 + item 7 merged), before any
+Dev B Phase 4 item. Supersedes the Phase 3 and item 7 numbers above. Mock A on 127.0.0.1:5050 with
+debug on (`PORT=5050 python app.py`); bench via `docker compose -p flowstopper-bench ... up --build -d`
+on 127.0.0.1:8100, scanned with the per-stage CLI and `--auth-config` (login `POST /login`, JWT copied
+from the `Authorization` response header; `dast: login ok`). Repeat recipe:
+`out/wf/b-p4-dast/measure.md` (git-ignored).
+
+| Metric | Mock A | Bench (authenticated) |
+|---|---|---|
+| Code detection | 13/13 100.0% great | 4/4 100.0% great |
+| Runtime detection | 10/13 76.9% good | 2/3 66.7% good |
+| Correct links | 7/10 70.0% good | 1/2 50.0% **below** (target >50%) |
+| Wrong links | 0/7 0.0% great | 0/1 0.0% great |
+| False alarms | 1/21 4.8% great | 0/10 0.0% great |
+| Run time | 1.3 s great | n/a (per-stage CLI writes no scan_meta.json) |
+| Unplanted (informational) | 5 | 4 |
+| Issues (confirmed / code-only / runtime-only; suppressed) | 21 (7/6/8; 5) | 10 (1/6/3; 1) |
+
+Mock A is unchanged from item 7. Bench code detection rose from 3/4 to 4/4 (Dev A's Phase 4 SAST
+work); runtime, links and false alarms on the bench match item 7. Bench DAST: 7 findings from 18
+endpoints, 508 requests.
+
+- Item 1 done: `seed_endpoints` now attaches every single-token path segment (`<conv:name>` /
+  `{name:conv}`, any position) as a PATH param with a from-the-end segment index; `build_request`
+  injects into that segment (`quote(value, safe="")`), and the pre-encoded `..%2f` traversal form is
+  spliced verbatim into a path segment as it already was into a query string (B-11). 10 new tests;
+  `make check` 489 passed, 0 skipped. Files: `FlowStopper/dast/{types,discovery}.py`,
+  `FlowStopper/dast/checks/{base,traversal}.py`, `tests/test_discovery.py`, `tests/test_checks_p2.py`.
+  Mock A before/after: runtime 10/13 -> 10/13, links 7/10 -> 7/10, wrong 0/7 -> 0/7, false alarms
+  1/21 -> 1/22, unplanted 5 -> 6, DAST findings 19 -> 20 (new: runtime-only XSS reflected in the
+  Werkzeug debug traceback of `GET /docs/<path:name>`, item 5's target). M08 is still missed on
+  :5050 for an environmental reason: the checkout is deep, so the 6-level Appendix B payload
+  resolves to `/Users/etc/passwd` (500), and `%2Fetc%2Fpasswd` is merged by Werkzeug to
+  `/docs/etc/passwd` (308). An unmodified copy of Mock A run from `/private/tmp` (port 5053,
+  diagnostic only) gave runtime 11/13, links 8/10, wrong 0/8, false alarms 1/22, i.e. M08 detected and
+  linked. Bench before/after: unchanged (code 4/4, runtime 2/3, links 1/2, wrong 0/1, false alarms
+  0/10, unplanted 4); requests 508 -> 542.
+- Item 2 done: the cmdi check gained a differential mode (`dast.cmdi.differential`, proof
+  `differential`, confidence 0.7, B-12) for shell sinks that never echo output. It reuses the same six
+  Appendix B payloads and reports only the shell-semantics split, comparing reflection-stripped
+  fingerprints: `;`/`|`/newline agree with each other and differ from the stable baseline in body
+  (same status), both `$(...)` and backtick match the baseline, the `;` result reproduces and a benign
+  control matches the baseline (`&&` ignored). `verify.SELF_CONTROLLED_RULES` records that the control
+  ran inside the check. 4 new tests; `make check` 493 passed, 0 skipped. Files:
+  `FlowStopper/dast/checks/cmdi.py`, `FlowStopper/dast/verify.py`, `tests/test_checks_p2.py`.
+  Mock A before/after: runtime 10/13 -> 11/13, links 7/10 -> 8/10, wrong 0/7 -> 0/8, false alarms
+  1/22 -> 1/22, unplanted 6 -> 6, DAST findings 20 -> 21 (M05 `GET /api/ping` `host` now confirmed;
+  no CWE-78 runtime finding at the `/api/diag` decoy). Bench before/after: unchanged (code 4/4,
+  runtime 2/3, links 1/2, wrong 0/1, false alarms 0/10, unplanted 4); requests 542 -> 542.
+- Item 3 done: SQLi status-transition rule `dast.sqli.status` (proof `error`, confidence 0.65, B-13)
+  for targets that hide DB error text. Runs only after error-based and boolean both miss; fires when a
+  stable 2xx/3xx baseline turns into a repeatable 5xx on `orig'` while `orig"`, the balanced
+  `orig' AND 'RND'='RND` and a benign control stay below 500. `_error_based` now returns its per-suffix
+  responses so `'`/`"` are not resent; `verify.CONTROL_SIGNALS` gained `dast.sqli.status` (status >= 500).
+  5 new tests (unbalanced-quote app found; any-quote, `int()` and baseline-500 apps not; error string
+  still wins at 0.9; R4 provenance incl. the new rule; verify confirm + control signal); `make check`
+  498 passed, 0 skipped. Files: `FlowStopper/dast/checks/sqli.py`, `FlowStopper/dast/verify.py`,
+  `tests/test_checks.py`, `tests/test_verify.py`. Hand-probe, Mock A debug off on :5052
+  (`flask --app app run -p 5052`, unedited), `POST /login` with `password=test`: `username=test` 302,
+  `test'` 500, `test"` 302, `test')` 500, `test'"` 500, `test' AND 'abc'='abc` 302,
+  `test' AND 'abc'='abd` 302. Mock A **debug off** before/after: runtime 9/13 -> 10/13, links 7/10 ->
+  8/10, wrong 0/7 -> 0/8, false alarms 1/16 -> 1/17, unplanted 1 -> 2, DAST findings 14 -> 16 (M02
+  `POST /login` `username` now Confirmed via `dast.sqli.status`; the extra unplanted one is the
+  genuine `password` SQLi already flagged as missing from Mock A's key in P3-J2; the `fetch_product`
+  / `fetch_order_by_int` decoys stay quiet). :5052 stopped afterwards. Mock A **debug on** (:5050)
+  before/after: unchanged (code 13/13, runtime 11/13, links 8/10, wrong 0/8, false alarms 1/22,
+  unplanted 6, DAST findings 21; CWE-89 runtime findings still all `dast.sqli.error`). Bench
+  before/after: unchanged (code 4/4, runtime 2/3, links 1/2, wrong 0/1, false alarms 0/10,
+  unplanted 4); requests 542 -> 542.
+- Item 4 done: eval exact-match precedence (B-14) in `evalkit/metrics.py`. A code finding that
+  overlaps a planted vuln's **unfuzzed** range is no longer counted against a decoy it reaches only via
+  the Appendix C ±3 fuzz; overlapping the decoy's own unfuzzed range is still a false alarm
+  (pessimistic). The same `_decoy_hit` rule feeds the false-alarm count and the decoy ids in the
+  wrong-link count, so they cannot disagree; detection matching and `LINE_FUZZ` unchanged, Mock A key
+  untouched. 3 new tests (exact planted inside decoy fuzz -> not a false alarm; fuzz-only decoy overlap
+  -> still one; planted + unfuzzed decoy overlap -> still one); golden `expected_metrics.json`
+  reproduced; `make check` 501 passed, 0 skipped. Files: `FlowStopper/evalkit/metrics.py`,
+  `tests/test_metrics.py`. Re-eval of the item 3 issues files (no rescan), Mock A before/after: false
+  alarms 1/22 -> 0/22 (the Confirmed M02 SQLi at `db.py:29` inside D01's fuzz window [29, 38]); code
+  13/13, runtime 11/13, links 8/10, wrong 0/8, unplanted 6 unchanged. Bench before/after: unchanged
+  (code 4/4, runtime 2/3, links 1/2, wrong 0/1, false alarms 0/10, unplanted 4).
+- Item 5 done: reflected XSS whose proving response is 5xx **and** matches `passive.ERROR_MARKERS` (a
+  debug traceback) is returned suppressed (`suppress_reason="dast:debug-traceback-reflection"`,
+  confidence 0.9 -> 0.5, evidence points at `dast.passive.verbose-error`); a clean reflection from the
+  other probe still wins. Downstream: `matcher.generate_candidates` never links a suppressed runtime
+  finding, and `issues.is_suppressed` now means "has findings and every code **and** runtime finding
+  is suppressed" (B-15; a Confirmed issue always has an unsuppressed runtime finding). No Dev A change
+  needed: pipeline, storage, eval and the correlate CLI already go through `is_suppressed`. 3 new tests
+  + `test_is_suppressed_rule` extended; golden `expected_issues.json` reproduced; `make check` 504
+  passed, 0 skipped. Files: `FlowStopper/dast/checks/xss.py`, `FlowStopper/correlate/{matcher,issues}.py`,
+  `tests/test_checks.py`, `tests/test_metrics.py`, `tests/test_correlate.py`. Mock A before/after: code
+  13/13, runtime 11/13, links 8/10, wrong 0/8 unchanged; false alarms 0/22 -> 0/19 (denominator is
+  reported issues); unplanted 6 -> 3; suppressed 5 -> 8; DAST findings 21 -> 21. Three runtime-only
+  XSS issues moved to the suppressed bucket, not the one planned: `GET /api/crash` `n`, `GET
+  /docs/<path:name>` `name` (added by item 1) and `GET /download` `file`; hand-probed each with the
+  body canary, all three are 500 Werkzeug traceback pages echoing it raw. The CWE-209
+  `dast.passive.verbose-error` issue is still reported. Bench before/after: unchanged (code 4/4, runtime
+  2/3, links 1/2, wrong 0/1, false alarms 0/10, unplanted 4, 1 suppressed); requests 542 -> 542.
+- Item 8 (DAST half) done: new host-wide probe `xss.probe_unknown_path` (B-16) sends one GET to
+  `{base}/{quote(sdcRND<"'>)}` (the Appendix B body canary as a non-existent path); on an HTML response
+  echoing `canary<` raw it re-probes once with a fresh canary and reports `dast.xss.unknown_path`
+  (CWE-79, GET, `route_id=None`, `param=None`, proof `echo`, confidence 0.8; the B-15 traceback rule
+  suppresses a 5xx debug-page echo at 0.5). One request on a miss, two on a hit. `runner.run_dast` calls
+  it once right after `passive.run` with `ctx.derive("xss-unknown-path")`, outside the time budget, adds
+  it to the host-wide findings and records `stats["unknown_path_probe"]`. 6 new tests (4 in
+  `test_checks.py`, 2 in `test_dast_runner.py`); runner-level R4 test unchanged and green; `make check`
+  510 passed, 0 skipped. Files: `FlowStopper/dast/checks/xss.py`, `FlowStopper/dast/runner.py`,
+  `tests/test_checks.py`, `tests/test_dast_runner.py`. Mock A before/after: unchanged (code 13/13,
+  runtime 11/13, links 8/10, wrong 0/8, false alarms 0/19, unplanted 3, 8 suppressed, 21 DAST
+  findings); its 404 page does not reflect the path, so no new finding. Bench before/after: runtime
+  detection 2/3 -> 3/3 (VF02 runtime half found: `GET /sdcowserhq%3C%22%27%3E` echoed raw in a
+  text/html 404); code 4/4, links 1/2, wrong 0/1 unchanged; false alarms 0/10 -> 0/11 (one more
+  reported issue); unplanted 4; DAST findings 7 -> 8; requests 542 -> 544. VF02 stays runtime-only
+  (see Needs Dev A).
+- P4-B3 done: every Confirmed link is explained by exactly one `same_cwe`, one route-kind
+  (`route_chain_origin` / `route_handler_span` / `route_reachable`), one `same_param` and one
+  `same_method` reason, details name the route and parameter, and weights sum to `link_score` (B-17).
+  `explain.py` no longer renders a bare `?` or `'None'` for a missing field (falls back to the runtime
+  route id, `file:line`, or the word `unknown`); existing reason texts are byte-identical, so golden
+  `expected_issues.json` is reproduced. New `explain.auto_verified_reason(...)` (kind `auto_verified`,
+  weight 0.0) for P4-B4. New `tests/test_explain.py` (9 tests: the three route kinds, param unknown,
+  param mismatch, method mismatch, missing fields, a fixture-wide invariant, the auto-verify helper);
+  `make check` 519 passed, 0 skipped. Files: `FlowStopper/correlate/explain.py`, `tests/test_explain.py`.
+  One-off invariant check on the existing `out/a/issues.json` (8 Confirmed) and `out/b/issues.json`
+  (1 Confirmed): all pass. Mock A before/after: unchanged (explanation-only change, no rescan). Bench
+  before/after: unchanged (no rescan).
+- P4-B4 done: `correlate/autoverify.auto_verify(...)` re-tests each eligible Code-only issue (B-18:
+  CWE 89/78/22/601/79, named source param, resolvable entry route with an allowed method, not
+  suppressed, not ambiguity-penalised) with only the matching DAST check against only that
+  (route, param), through the scope-guarded client (target checked first, R3) and the runner's
+  verify + collapse; a hit is accepted only if the normal candidate + assignment pass links it to that
+  code finding (route gate, `link_min`, ambiguity rule against every unsuppressed code finding, no
+  runtime finding reused), then the issue becomes Confirmed with `verified_by="auto-verify"`, an
+  `auto_verified` reason and the same issue id. Deadline checked before login and each probe
+  (`stats["truncated"]`). `correlate` gained `--target`, `--auth-config`, `--autoverify-budget`
+  (default 60 s) and `--seed`; without `--target` its output is byte-identical. `engine._confirmed_issue`
+  -> `confirmed_issue` (alias kept). 10 new tests (`tests/test_autoverify.py`: upgrade, safe app,
+  seven ineligible kinds with zero requests, non-Code-only untouched, expired deadline, out-of-scope
+  ScopeError, R4 shapes, determinism, CLI byte-identical, CLI R3 refusal); golden
+  `expected_issues.json` reproduced; `make check` 529 passed, 0 skipped. Files:
+  `FlowStopper/correlate/{autoverify,engine,commands}.py`, `tests/test_autoverify.py`. Mock A (per-stage
+  `sast` -> `dast` -> `correlate`, before = without `--target`, after = `--target
+  http://127.0.0.1:5050`, same inputs): 2 eligible (M06 blind cmdi `POST /admin/backup` `name`, M08
+  traversal `GET /docs/<path:name>` - the deep-checkout depth issue from item 1), 0 upgraded; issues
+  files byte-identical; code 13/13, runtime 11/13, links 8/10, wrong 0/8, false alarms 0/19, unplanted 3
+  before and after. Bench (authenticated, `--target http://127.0.0.1:8100 --auth-config
+  out/b/auth.json`): 0 eligible (five CWE-798 secrets, the 404-handler XSS with no source param or
+  entry route, one suppressed traversal), 0 upgraded; byte-identical; code 4/4, runtime 3/3, links 1/2,
+  wrong 0/1, false alarms 0/11, unplanted 4 before and after. As predicted: items 1-3 already confirm
+  every injectable Code-only issue these two apps have.
+- Cross-item integration check (no code change): `make check` 529 passed, 0 skipped; every changed
+  module imports cleanly on its own (no cycles). Fresh end-to-end re-measure matches the last row of
+  each item: Mock A (`scan`) code 13/13, runtime 11/13, links 8/10, wrong 0/8, false alarms 0/19,
+  unplanted 3, 8 suppressed, 21 DAST findings; bench (authenticated per-stage) code 4/4, runtime 3/3,
+  links 1/2, wrong 0/1, false alarms 0/11, unplanted 4, 1 suppressed, 8 DAST findings, 544 requests.
+  `correlate --target` gives byte-identical issues on both (Mock A 0 of 2 eligible upgraded, bench
+  0 of 0). Item 5 suppression vs item 8 / P4-B4: suppressed runtime findings are never linked
+  (matcher), never accepted by auto-verify, and lose dedupe/collapse to any unsuppressed finding on
+  the same key (0.5 is the lowest runtime confidence). All 9 Confirmed links on the two apps pass the
+  P4-B3 reason invariant.
+
+### Needs Dev A
+
+- **FYI (item 4, B-14):** eval now gives an exact planted-vuln match precedence over a ±3-line fuzzy
+  decoy overlap, so Mock A false alarms drop 1/22 -> 0/22 with no scanner change. Numbers in
+  `docs/metrics/phase4_dev_a.md` and earlier Mock A reports computed with the old rule are not directly
+  comparable on the false-alarm row. No action needed; Mock A's key was not changed.
+- Pipeline auth option for `FlowStopper scan` (see the item 7 note above) is still open.
+- **Item 8 SAST half (bench VF02):** the SAST finding for the 404 handler has `entry_routes == []`
+  (an error handler is not a route), so the correlator's hard route gate can never link it to the
+  route-less `dast.xss.unknown_path` runtime finding. It stays runtime-only, which is preferred over a
+  wrong link. Linking it needs Dev A to give error-handler findings some route/handler identity the
+  correlator can match; no Dev B workaround beyond reporting the runtime half (B-16).
+- **P4-B4 auto-verify in `scan` (B-18):** `pipeline.py` should call
+  `await FlowStopper.correlate.autoverify.auto_verify(issues, routes, target_url, dast_config,
+  deadline=<monotonic instant for the remaining budget>)` right after `correlate()` (same `DastConfig`,
+  including the auth config once the pipeline has one) and store `result.issues` /
+  `result.stats`, so `FlowStopper scan` auto-verifies. Workaround until then: per-stage CLI
+  `correlate --sast ... --dast ... --target URL [--auth-config FILE]`.
+
 ## Phase 5 ΓÇö delivery surface Γ¼£  ┬╖  ## Phase 6 ΓÇö generalisation Γ¼£  ┬╖  ## Phase 7 ΓÇö release Γ¼£
 
 ## Third-party benchmark (we45 Vulnerable-Flask-App) ΓÇö cross-phase

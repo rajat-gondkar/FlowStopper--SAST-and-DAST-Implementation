@@ -66,9 +66,15 @@ def _redirect_signal(ex: HttpExchange) -> bool:
 # where a control request cannot discriminate (see module docstring).
 CONTROL_SIGNALS: dict[str, Callable[[HttpExchange], bool]] = {
     "dast.sqli.error": lambda ex: bool(sqli_check.SQL_ERRORS.search(ex.body)),
+    "dast.sqli.status": lambda ex: ex.status >= 500,
     "dast.traversal.file": lambda ex: bool(traversal_check.PASSWD_RE.search(ex.body)),
     "dast.redirect.open": _redirect_signal,
 }
+
+# Rules whose check already sends its own benign control (and re-sends the proving payload) before it
+# reports. A generic "benign value must not show the signal" control cannot discriminate a response
+# *difference*, so reverify only records that the control happened inside the check (B-12).
+SELF_CONTROLLED_RULES: frozenset[str] = frozenset({"dast.cmdi.differential"})
 
 
 @dataclass
@@ -99,6 +105,15 @@ async def reverify(
     if not same:
         return VerifyOutcome(finding, False, "second canary did not reproduce the finding")
     second = same[0]
+
+    if finding.rule_id in SELF_CONTROLLED_RULES:
+        return VerifyOutcome(
+            finding,
+            True,
+            "reproduced with a second canary; benign control checked inside the check",
+            second.runtime.payload if second.runtime else None,
+            control_applied=True,
+        )
 
     predicate = CONTROL_SIGNALS.get(finding.rule_id)
     if predicate is None:

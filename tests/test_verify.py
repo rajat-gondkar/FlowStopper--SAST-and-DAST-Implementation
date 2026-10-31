@@ -168,6 +168,36 @@ async def test_redirect_control_rejects_unconditional_offsite_redirect():
     assert kept == []
 
 
+def _status_app(request: httpx.Request) -> httpx.Response:
+    # hides DB errors: an unbalanced ' breaks the query -> generic 500 with no error text
+    if request.url.params.get("id", "").count("'") % 2:
+        return httpx.Response(500, text="<h1>Internal Server Error</h1>")
+    return httpx.Response(200, text="rows: 3")
+
+
+async def test_sqli_status_transition_is_confirmed_with_clean_control():
+    ctx = _ctx(_status_app)
+    ep, param = _endpoint("/items", "id")
+    first = await sqli.run(ctx, ep, param)
+    assert [f.rule_id for f in first] == ["dast.sqli.status"]
+    kept, outcomes = await verify.verify_findings(ctx, ep, param, first, sqli)
+    await ctx.client.aclose()
+    assert len(kept) == 1 and outcomes[0].confirmed and outcomes[0].control_applied is True
+    assert "benign control is clean" in kept[0].raw["verification"]["detail"]
+
+
+async def test_sqli_status_control_signal_is_a_server_error():
+    def app(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(int(request.url.params.get("id", "200")), text="x")
+
+    ctx = _ctx(app)
+    ep, _ = _endpoint("/items", "id")
+    signal = verify.CONTROL_SIGNALS["dast.sqli.status"]
+    results = {code: signal(await ctx.send(ep, Param("id", Q, str(code)), str(code))) for code in (200, 302, 404, 500)}
+    await ctx.client.aclose()
+    assert results == {200: False, 302: False, 404: False, 500: True}
+
+
 async def test_unreachable_target_during_retest_is_not_confirmed():
     calls = {"n": 0}
 

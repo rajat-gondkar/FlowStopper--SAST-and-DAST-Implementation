@@ -26,6 +26,20 @@ from FlowStopper.models import Engine, Finding, ParamLocation, RuntimeLocation
 INJECTABLE = (ParamLocation.QUERY, ParamLocation.FORM, ParamLocation.JSON, ParamLocation.PATH)
 
 
+def _with_path_segment(url: str, param: Param, encoded: str) -> str:
+    """`url` with the path segment owned by `param` replaced by the already-encoded `encoded`.
+
+    `param.segment` counts from the end (see Param); None means the last segment. The query string
+    is dropped - build_request re-adds query params through httpx.
+    """
+    s = urlsplit(url)
+    segs = s.path.split("/")
+    idx = len(segs) + (param.segment if param.segment is not None else -1)
+    if 1 <= idx < len(segs):  # never touch segs[0], the empty string before the leading '/'
+        segs[idx] = encoded
+    return urlunsplit((s.scheme, s.netloc, "/".join(segs), "", ""))
+
+
 def build_request(
     endpoint: Endpoint,
     param: Param,
@@ -57,11 +71,7 @@ def build_request(
 
     url = endpoint.url
     if param.location is ParamLocation.PATH:
-        s = urlsplit(endpoint.url)
-        segs = s.path.split("/")
-        if len(segs) > 1:
-            segs[-1] = quote(str(value), safe="")
-        url = urlunsplit((s.scheme, s.netloc, "/".join(segs), "", ""))
+        url = _with_path_segment(endpoint.url, param, quote(str(value), safe=""))
 
     headers = dict(buckets[ParamLocation.HEADER])
     if buckets[ParamLocation.COOKIE]:
@@ -97,6 +107,21 @@ def build_raw_query_request(
     raw = f"{param.name}={raw_value}"
     s = urlsplit(url)
     return method, urlunsplit((s.scheme, s.netloc, s.path, f"{query}&{raw}" if query else raw, "")), kw
+
+
+def build_raw_path_request(
+    endpoint: Endpoint,
+    param: Param,
+    raw_value: str,
+    reserved_headers: frozenset[str] = frozenset(),
+) -> tuple[str, str, dict]:
+    """Like build_request for a PATH param, but splices `raw_value` into its segment **verbatim**.
+
+    Same reason as build_raw_query_request: quoting a pre-encoded `..%2f` payload would send
+    `..%252f`, and the target would never see the encoded separator the payload is testing.
+    """
+    method, _, kw = build_request(endpoint, param, raw_value, reserved_headers)
+    return method, _with_path_segment(endpoint.url, param, raw_value), kw
 
 
 @dataclass
@@ -146,10 +171,13 @@ class CheckContext:
         return self._baselines[key]
 
     async def send(self, endpoint: Endpoint, param: Param, payload: str, *, raw_query: bool = False) -> HttpExchange:
-        """Send one payload. `raw_query` splices an already-encoded payload into the query verbatim."""
+        """Send one payload. `raw_query` splices an already-encoded payload into the query string or
+        path segment verbatim (QUERY and PATH params; other locations are sent as usual)."""
         self.sent_payloads.append(payload)
         if raw_query and param.location is ParamLocation.QUERY:
             method, url, kw = build_raw_query_request(endpoint, param, payload, self.reserved_headers)
+        elif raw_query and param.location is ParamLocation.PATH:
+            method, url, kw = build_raw_path_request(endpoint, param, payload, self.reserved_headers)
         else:
             method, url, kw = build_request(endpoint, param, payload, self.reserved_headers)
         return await self.client.request(method, url, **kw)

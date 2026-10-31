@@ -18,6 +18,9 @@ class Param:
     location: ParamLocation
     value: str = ""  # benign sample value; checks substitute payloads for it
     required: bool = False
+    # PATH params only: index of the owning URL path segment, counted from the END (negative), so a
+    # base-URL path prefix does not shift it. None = the last segment (crawled / hand-built params).
+    segment: Optional[int] = None
 
 
 @dataclass

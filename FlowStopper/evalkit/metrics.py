@@ -16,6 +16,13 @@ Matching rules (spec Appendix C):
   matches the key path template (<...>/{...} are wildcards; "*" matches any/host-wide); param equal
   when the key names one.
 
+Exact-match precedence (decision B-14): the +/-3 fuzz can make a decoy's window cover a genuine
+planted vuln a few lines away. A code finding that exactly matches a planted vuln (same file + CWE
+family, overlapping the planted range with no fuzz) is therefore not counted against a decoy unless it
+also overlaps that decoy's own unfuzzed range (exact-vs-exact stays a false alarm, the pessimistic
+choice). The same rule decides which decoys a finding joins in the wrong-link count, so the two never
+disagree. Detection matching and LINE_FUZZ are unchanged.
+
 Detection counts any matching finding, suppressed or not (suppression is a reporting decision, not a
 detection one); false alarms and links look only at reported / Confirmed issues.
 """
@@ -27,7 +34,7 @@ import re
 
 from FlowStopper import cwe
 from FlowStopper.correlate.issues import is_suppressed
-from FlowStopper.evalkit.keyschema import AnswerKey, KeyRuntime
+from FlowStopper.evalkit.keyschema import AnswerKey, KeyDecoy, KeyRuntime
 from FlowStopper.models import Finding, Issue, Label
 
 LINE_FUZZ = 3  # Appendix C: overlap against [line_start-3, line_end+3]
@@ -70,6 +77,28 @@ def _code_matches(f: Finding, kcwe: int, kfile: str, kstart: int, kend: int) -> 
     if _norm_path(c.file) != _norm_path(kfile):
         return False
     return _ranges_overlap(c.line_start, c.line_end, kstart - LINE_FUZZ, kend + LINE_FUZZ)
+
+
+def _exact_code_match(f: Finding, kcwe: int, kfile: str, kstart: int, kend: int) -> bool:
+    """Like _code_matches, but against the unfuzzed [kstart, kend] range."""
+    c = f.code
+    if c is None or not cwe.same_family(f.cwe, kcwe):
+        return False
+    if _norm_path(c.file) != _norm_path(kfile):
+        return False
+    return _ranges_overlap(c.line_start, c.line_end, kstart, kend)
+
+
+def _decoy_hit(f: Finding, d: KeyDecoy, key: AnswerKey) -> bool:
+    """Whether code finding `f` counts against decoy `d`, with exact-planted-match precedence (B-14)."""
+    if not _code_matches(f, d.cwe, d.file, d.line_start, d.line_end):
+        return False
+    if _exact_code_match(f, d.cwe, d.file, d.line_start, d.line_end):
+        return True  # overlaps the decoy itself: always a false alarm
+    exact_planted = any(
+        v.code and _exact_code_match(f, v.cwe, v.code.file, v.code.line_start, v.code.line_end) for v in key.vulns
+    )
+    return not exact_planted
 
 
 def _runtime_matches(f: Finding, kr: KeyRuntime, kcwe: int) -> bool:
@@ -139,7 +168,7 @@ def compute_metrics(issues: list[Issue], key: AnswerKey) -> dict:
                 for v in key.vulns
                 if v.code and _code_matches(f, v.cwe, v.code.file, v.code.line_start, v.code.line_end)
             }
-            code_ids |= {d.id for d in key.decoys if _code_matches(f, d.cwe, d.file, d.line_start, d.line_end)}
+            code_ids |= {d.id for d in key.decoys if _decoy_hit(f, d, key)}
         runtime_ids: set[str] = set()
         for f in i.runtime_findings:
             runtime_ids |= {v.id for v in key.vulns if v.runtime and _runtime_matches(f, v.runtime, v.cwe)}
@@ -150,11 +179,7 @@ def compute_metrics(issues: list[Issue], key: AnswerKey) -> dict:
 
     # --- false alarms ---
     reported = [i for i in issues if not is_suppressed(i)]
-    false_alarms = sum(
-        1
-        for i in reported
-        if any(_code_matches(f, d.cwe, d.file, d.line_start, d.line_end) for f in i.code_findings for d in key.decoys)
-    )
+    false_alarms = sum(1 for i in reported if any(_decoy_hit(f, d, key) for f in i.code_findings for d in key.decoys))
 
     return {
         "code_detection": {"found": code_found, "total": len(code_vulns), "rate": _rate(code_found, len(code_vulns))},

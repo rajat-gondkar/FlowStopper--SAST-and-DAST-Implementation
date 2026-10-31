@@ -11,16 +11,19 @@ from __future__ import annotations
 import re
 import shlex
 import subprocess
+from urllib.parse import unquote
 
 import httpx
 
+from FlowStopper.dast import verify
 from FlowStopper.dast.checks import cmdi, redirect, traversal
-from FlowStopper.dast.checks.base import CheckContext
+from FlowStopper.dast.checks.base import CheckContext, build_request
 from FlowStopper.dast.checks.redirect import redirect_host
 from FlowStopper.dast.client import DastClient
 from FlowStopper.dast.config import DastConfig
+from FlowStopper.dast.discovery import seed_endpoints
 from FlowStopper.dast.types import Endpoint, Param
-from FlowStopper.models import ParamLocation
+from FlowStopper.models import ParamLocation, Route
 from FlowStopper.scope import ScopeGuard
 
 GUARD = ScopeGuard(["localhost"])
@@ -76,6 +79,67 @@ async def test_cmdi_reflection_only_is_not_flagged():
     findings = await cmdi.run(ctx, ep, param)
     await ctx.client.aclose()
     assert findings == []
+
+
+# --------------------------------------------------------------------------- cmdi differential (P4 item 2, B-12)
+def _exit_code_shell_app(request: httpx.Request) -> httpx.Response:
+    """Emulates `rc = os.system("ls /nonexistent_" + host)`: a real shell runs, only the exit code is returned."""
+    host = request.url.params.get("host", "")
+    rc = subprocess.run(["/bin/sh", "-c", f"ls /nonexistent_{host} >/dev/null 2>&1"], timeout=5).returncode
+    return httpx.Response(200, json={"exit": rc, "host": host})
+
+
+def _space_sensitive_safe_app(request: httpx.Request) -> httpx.Response:
+    """Emulates a list-form subprocess whose result merely depends on the value containing a space."""
+    host = request.url.params.get("host", "")
+    return httpx.Response(200, json={"exit": 2 if " " in host else 0, "host": host})
+
+
+def _json_reflection_app(request: httpx.Request) -> httpx.Response:
+    """Echoes the value back in JSON and does nothing else - only the reflection differs."""
+    return httpx.Response(200, json={"host": request.url.params.get("host", ""), "ok": True})
+
+
+async def test_cmdi_detected_differentially_when_only_the_exit_code_comes_back():
+    ctx = _ctx(_exit_code_shell_app)
+    ep, param = _endpoint("/api/ping", "host", "127.0.0.1")
+    findings = await cmdi.run(ctx, ep, param)
+    assert len(findings) == 1
+    f = findings[0]
+    assert f.cwe == 78 and f.rule_id == "dast.cmdi.differential" and f.runtime.proof == "differential"
+    assert f.confidence == 0.7
+    assert f.raw["separator"]["hash"] != f.raw["baseline"]["hash"]
+    assert f.raw["substitution"]["hash"] == f.raw["baseline"]["hash"]
+    # verification re-runs it with a fresh canary; the control is the check's own
+    kept, outcomes = await verify.verify_findings(ctx, ep, param, findings, cmdi)
+    await ctx.client.aclose()
+    assert len(kept) == 1 and "benign control checked inside the check" in outcomes[0].reason
+    offenders = [p for p in ctx.sent_payloads if not _is_appendix_b(p)]
+    assert offenders == [], f"non-Appendix-B payloads sent (R4 violation): {offenders}"
+
+
+async def test_cmdi_differential_ignores_a_safe_app_that_reacts_to_any_odd_value():
+    ctx = _ctx(_space_sensitive_safe_app)
+    ep, param = _endpoint("/api/ping", "host", "127.0.0.1")
+    findings = await cmdi.run(ctx, ep, param)
+    await ctx.client.aclose()
+    assert findings == []
+
+
+async def test_cmdi_differential_ignores_a_json_reflection():
+    ctx = _ctx(_json_reflection_app)
+    ep, param = _endpoint("/api/ping", "host", "127.0.0.1")
+    findings = await cmdi.run(ctx, ep, param)
+    await ctx.client.aclose()
+    assert findings == []
+
+
+async def test_cmdi_marker_still_wins_over_differential():
+    ctx = _ctx(_shell_app)
+    ep, param = _endpoint("/api/ping", "host", "127.0.0.1")
+    findings = await cmdi.run(ctx, ep, param)
+    await ctx.client.aclose()
+    assert [(f.rule_id, f.confidence) for f in findings] == [("dast.cmdi.marker", 0.9)]
 
 
 # --------------------------------------------------------------------------- path traversal
@@ -241,6 +305,124 @@ async def test_only_appendix_b_payloads_are_sent():
         sent += ctx.sent_payloads
 
     assert sent, "checks should have sent something"
+    offenders = [p for p in sent if not _is_appendix_b(p)]
+    assert offenders == [], f"non-Appendix-B payloads sent (R4 violation): {offenders}"
+
+
+# --------------------------------------------------------------------------- PATH params (P4 item 1, B-11)
+def _route(template: str) -> Route:
+    return Route(
+        id=f"GET {template}",
+        method="GET",
+        path_template=template,
+        path_regex="^x$",
+        handler="h",
+        file="f.py",
+        line_start=1,
+        line_end=2,
+    )
+
+
+def _path_endpoint(template: str, base: str = "http://localhost") -> Endpoint:
+    return seed_endpoints([_route(template)], base)[0]
+
+
+def _pparam(ep: Endpoint, name: str) -> Param:
+    return next(p for p in ep.params if p.name == name and p.location is ParamLocation.PATH)
+
+
+def test_build_request_injects_into_the_middle_path_segment_only():
+    ep = _path_endpoint("/api/<tenant>/orders/<int:id>")
+    _, url, kw = build_request(ep, _pparam(ep, "tenant"), "../../etc/passwd")
+    assert url == "http://localhost/api/..%2F..%2Fetc%2Fpasswd/orders/1"
+    _, url, _ = build_request(ep, _pparam(ep, "id"), "x y")
+    assert url == "http://localhost/api/test/orders/x%20y"
+    assert "params" not in kw  # PATH params never leak into the query string
+
+
+def test_build_request_path_segment_survives_a_base_url_prefix():
+    ep = _path_endpoint("/api/<tenant>/orders/<int:id>", base="http://localhost/app/v1")
+    assert ep.url == "http://localhost/app/v1/api/test/orders/1"
+    _, url, _ = build_request(ep, _pparam(ep, "tenant"), "acme")
+    assert url == "http://localhost/app/v1/api/acme/orders/1"
+
+
+def test_build_request_path_param_without_segment_targets_the_last_segment():
+    param = Param("name", ParamLocation.PATH, "a.txt")  # crawled / hand-built: no segment index
+    ep = Endpoint("GET", "http://localhost/docs/a.txt", "/docs/a.txt", params=[param])
+    _, url, _ = build_request(ep, param, "/etc/passwd")
+    assert url == "http://localhost/docs/%2Fetc%2Fpasswd"
+
+
+def _docs_segment(request: httpx.Request) -> str:
+    raw_path = request.url.raw_path.decode().split("?", 1)[0]
+    prefix = "/docs/"
+    return unquote(raw_path[len(prefix) :]) if raw_path.startswith(prefix) else ""
+
+
+def _path_traversal_app(request: httpx.Request) -> httpx.Response:
+    """Emulates `send_file(os.path.join(DOCS, name))` behind `/docs/<path:name>`."""
+    name = _docs_segment(request)
+    if ".." in name or name.startswith("/etc/"):
+        return httpx.Response(200, text=PASSWD, headers={"content-type": "text/plain"})
+    return httpx.Response(200, text="doc contents", headers={"content-type": "text/plain"})
+
+
+def _path_traversal_safe_app(request: httpx.Request) -> httpx.Response:
+    name = _docs_segment(request)
+    if ".." in name or "/" in name:
+        return httpx.Response(404, text="not found", headers={"content-type": "text/plain"})
+    return httpx.Response(200, text="doc contents", headers={"content-type": "text/plain"})
+
+
+async def test_traversal_detected_through_a_path_param():
+    ctx = _ctx(_path_traversal_app)
+    ep = _path_endpoint("/docs/<path:name>")
+    findings = await traversal.run(ctx, ep, _pparam(ep, "name"))
+    await ctx.client.aclose()
+    assert len(findings) == 1
+    f = findings[0]
+    assert f.cwe == 22 and f.runtime.param == "name" and f.runtime.param_location is ParamLocation.PATH
+    assert f.runtime.route_id == "GET /docs/<path:name>"
+    assert re.search(r"root:[x*!]*:0:0:", f.runtime.response_excerpt)
+
+
+async def test_traversal_safe_path_param_not_flagged():
+    ctx = _ctx(_path_traversal_safe_app)
+    ep = _path_endpoint("/docs/<path:name>")
+    findings = await traversal.run(ctx, ep, _pparam(ep, "name"))
+    await ctx.client.aclose()
+    assert findings == []
+
+
+async def test_encoded_traversal_path_payload_is_not_double_encoded():
+    seen: list[str] = []
+
+    def recorder(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.raw_path.decode())
+        return httpx.Response(200, text="nothing", headers={"content-type": "text/plain"})
+
+    ctx = _ctx(recorder)
+    ep = _path_endpoint("/docs/<path:name>")
+    await traversal.run(ctx, ep, _pparam(ep, "name"))
+    await ctx.client.aclose()
+    assert "/docs/..%2f..%2f..%2f..%2fetc%2fpasswd" in seen, seen
+    assert all("%252f" not in p.lower() for p in seen), f"payload was double-encoded: {seen}"
+
+
+async def test_only_appendix_b_payloads_are_sent_through_path_params():
+    sent: list[str] = []
+    for handler, template, pname, check in (
+        (_path_traversal_app, "/docs/<path:name>", "name", traversal),
+        (_redirect_app, "/go/<next>", "next", redirect),
+        (_shell_app, "/ping/<host>", "host", cmdi),
+    ):
+        ctx = _ctx(handler)
+        ep = _path_endpoint(template)
+        await check.run(ctx, ep, _pparam(ep, pname))
+        await ctx.client.aclose()
+        sent += ctx.sent_payloads
+    assert sent
     offenders = [p for p in sent if not _is_appendix_b(p)]
     assert offenders == [], f"non-Appendix-B payloads sent (R4 violation): {offenders}"
 
