@@ -114,8 +114,8 @@ def generate_candidates(
     out: list[Candidate] = []
     for runtime in runtime_findings:
         rt = runtime.runtime
-        if rt is None:
-            continue
+        if rt is None or runtime.suppressed:
+            continue  # suppressed runtime findings never get linked either (B-15)
         route = routes_by_id.get(rt.route_id) if rt.route_id else None
         for code in code_findings:
             if code.suppressed or code.code is None:

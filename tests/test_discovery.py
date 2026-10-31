@@ -60,9 +60,35 @@ def test_seed_endpoints_fills_path_and_keeps_query_params():
     assert len(eps) == 1
     ep = eps[0]
     assert ep.path == "/api/items/1" and ep.route_id == "GET /api/items/<int:id>"
-    # the PATH param is consumed into the URL; only the query param remains attached
-    assert ep.param_names() == {"q"}
+    # the PATH param is filled into the URL AND attached, so checks can inject into it (B-11)
+    assert ep.param_names() == {"id", "q"}
+    pid = next(p for p in ep.params if p.name == "id")
+    assert pid.location is ParamLocation.PATH and pid.value == "1" and pid.segment == -1 and pid.required
     assert ep.source == "seed"
+
+
+def test_seed_endpoints_attaches_path_params_in_any_segment():
+    eps = seed_endpoints([_route("GET", "/api/<tenant>/orders/<int:id>")], BASE)
+    by_name = {p.name: p for p in eps[0].params}
+    assert set(by_name) == {"tenant", "id"}
+    assert (by_name["tenant"].location, by_name["tenant"].segment, by_name["tenant"].value) == (
+        ParamLocation.PATH,
+        -3,
+        "test",
+    )
+    assert (by_name["id"].segment, by_name["id"].value) == (-1, "1")
+
+
+def test_seed_endpoints_path_param_names_flask_and_fastapi():
+    flask, fastapi = seed_endpoints([_route("GET", "/docs/<path:name>"), _route("GET", "/f/{p:path}/{order_id}")], BASE)
+    assert [(p.name, p.value, p.segment) for p in flask.params] == [("name", "a.txt", -1)]
+    assert [(p.name, p.value, p.segment) for p in fastapi.params] == [("p", "a.txt", -2), ("order_id", "test", -1)]
+
+
+def test_seed_endpoints_skips_segments_mixing_token_and_literal():
+    eps = seed_endpoints([_route("GET", "/export/<int:id>.json")], BASE)
+    assert eps[0].path == "/export/1.json"
+    assert eps[0].params == []
 
 
 # --------------------------------------------------------------------------- crawl

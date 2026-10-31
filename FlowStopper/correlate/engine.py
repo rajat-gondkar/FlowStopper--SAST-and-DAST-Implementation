@@ -58,7 +58,8 @@ def _route_for_code(code: Finding, routes_by_id: dict[str, Route]) -> Optional[R
     return None
 
 
-def _confirmed_issue(cand: Candidate, config: CorrelateConfig) -> Issue:
+def confirmed_issue(cand: Candidate, config: CorrelateConfig) -> Issue:
+    """The Confirmed issue for one accepted link (also used by auto-verify, P4-B4)."""
     code, runtime = cand.code, cand.runtime
     assert code.code is not None and runtime.runtime is not None
     cvss, severity, owasp = _catalogue(code.cwe)
@@ -86,6 +87,9 @@ def _confirmed_issue(cand: Candidate, config: CorrelateConfig) -> Issue:
         verified_by="dast",
         owasp_2025=owasp,
     )
+
+
+_confirmed_issue = confirmed_issue  # backwards-compatible alias
 
 
 def _code_only_issue(
@@ -170,7 +174,7 @@ def correlate(
     linked_runtime = {cand.runtime.id for cand in assignment.links}
 
     for cand in assignment.links:
-        issues.append(_confirmed_issue(cand, config))
+        issues.append(confirmed_issue(cand, config))
     for code in code_findings:
         if code.id not in linked_code and code.code is not None:
             issues.append(_code_only_issue(code, routes_by_id, assignment.penalties.get(code.id), config))

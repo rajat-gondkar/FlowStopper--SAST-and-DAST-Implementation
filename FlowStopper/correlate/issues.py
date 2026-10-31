@@ -28,10 +28,12 @@ SEVERITY_RANK: dict[Severity, int] = {
 
 
 def is_suppressed(issue: Issue) -> bool:
-    """Derived state (DECISIONS D-12): an issue with no runtime findings whose code findings are
-    all suppressed. Such issues sort last and never count as reported (B-2).
+    """Derived state (DECISIONS D-12, extended by DECISIONS_Dev2 B-15): an issue with findings, every
+    one of which (code and runtime) is suppressed. Such issues sort last and never count as reported
+    (B-2). A Confirmed issue always holds an unsuppressed runtime finding, so it is never suppressed.
     """
-    return bool(issue.code_findings) and not issue.runtime_findings and all(f.suppressed for f in issue.code_findings)
+    findings = [*issue.code_findings, *issue.runtime_findings]
+    return bool(findings) and all(f.suppressed for f in findings)
 
 
 def issue_sort_key(issue: Issue) -> tuple:

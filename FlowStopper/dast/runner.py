@@ -179,6 +179,10 @@ async def run_dast(target_url: str, routes: list[Route], config: Optional[DastCo
         endpoints = order_endpoints([e for e in discovered if e.method.upper() in allowed])
 
         passive_findings = await passive.run(ctx, endpoints)
+        # Host-wide, not budgeted (like the passive pass): one unknown-path request carrying the XSS
+        # canary, two on a hit (item 8, B-16).
+        unknown_path_findings = await xss.probe_unknown_path(ctx.derive("xss-unknown-path"), base)
+        passive_findings += unknown_path_findings
 
         units = [(e, p) for e in endpoints for p in injectable_params(e)]
         sem = asyncio.Semaphore(max(1, config.concurrency))
@@ -225,6 +229,7 @@ async def run_dast(target_url: str, routes: list[Route], config: Optional[DastCo
         "candidate_findings": state.candidates,
         "findings": len(findings),
         "passive_findings": len(passive_findings),
+        "unknown_path_probe": len(unknown_path_findings),
         "dropped_unverified": state.dropped,
         "unverified_examples": sorted(state.unverified)[:10],
         "errors": state.errors,

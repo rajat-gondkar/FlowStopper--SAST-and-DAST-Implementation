@@ -68,8 +68,31 @@ def _abs(base_url: str, path: str) -> str:
     return base_url.rstrip("/") + "/" + path.lstrip("/")
 
 
+def _path_token_name(token: str) -> str:
+    inner = token[1:-1]
+    if token[0] == "<":  # Flask: <converter:name> or <name>
+        return inner.split(":", 1)[1] if ":" in inner else inner
+    return inner.split(":", 1)[0]  # FastAPI/Starlette: {name:converter} or {name}
+
+
+def path_params(template: str) -> list[Param]:
+    """One PATH Param per path segment that is exactly one `<...>`/`{...}` token, in any position.
+
+    `segment` is the segment index counted from the end, so it still points at the right segment
+    once the template is joined onto a base URL that has its own path prefix. A segment mixing a
+    token with literal text (`<id>.json`) is skipped: replacing the whole segment would drop the
+    literal part and probe a different route.
+    """
+    segs = template.split("/")
+    out: list[Param] = []
+    for i, seg in enumerate(segs):
+        if _TOKEN.fullmatch(seg):
+            out.append(Param(_path_token_name(seg), ParamLocation.PATH, _sample_path_value(seg), True, i - len(segs)))
+    return out
+
+
 def seed_endpoints(routes: list[Route], base_url: str) -> list[Endpoint]:
-    """One concrete Endpoint per Route (path filled, non-path params attached with benign values)."""
+    """One concrete Endpoint per Route (path filled; path and non-path params attached with benign values)."""
     out: list[Endpoint] = []
     for r in routes:
         path = fill_path(r.path_template)
@@ -79,6 +102,7 @@ def seed_endpoints(routes: list[Route], base_url: str) -> list[Endpoint]:
             for p in r.params
             if p.location is not ParamLocation.PATH
         ]
+        params += path_params(r.path_template)
         out.append(
             Endpoint(
                 method=r.method.upper(),

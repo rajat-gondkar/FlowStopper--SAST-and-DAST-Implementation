@@ -211,6 +211,57 @@ def test_false_alarm_on_decoy_overlap_only_when_reported():
     assert m["false_alarms"] == {"count": 1, "reported": 1, "rate": 1.0}
 
 
+def _precedence_key() -> AnswerKey:
+    # planted SQLi at db.py:29 sits inside decoy D1's fuzzed window [29, 38] (decoy range 32-35)
+    return AnswerKey.model_validate(
+        {
+            "app": "t",
+            "vulns": [
+                {
+                    "id": "P1",
+                    "cwe": 89,
+                    "kind": "pair",
+                    "code": {"file": "db.py", "line_start": 27, "line_end": 29},
+                    "runtime": {"method": "POST", "path": "/login", "param": "username"},
+                }
+            ],
+            "decoys": [
+                {"id": "D1", "cwe": 89, "file": "db.py", "line_start": 32, "line_end": 35, "reason": "parameterised"}
+            ],
+        }
+    )
+
+
+def test_exact_planted_match_beats_fuzzy_decoy_overlap():
+    key = _precedence_key()
+    issue = _issue(
+        Label.CONFIRMED,
+        code=[_code_finding(89, "db.py", 29)],
+        runtime=[_runtime_finding(89, "POST", "/login", "username")],
+    )
+    m = compute_metrics([issue], key)
+    assert m["false_alarms"] == {"count": 0, "reported": 1, "rate": 0.0}
+    assert m["wrong_links"]["count"] == 0
+    assert m["correct_links"]["found"] == 1
+
+
+def test_fuzzy_decoy_overlap_without_planted_match_is_false_alarm():
+    key = _precedence_key()
+    # line 37: inside the decoy's +-3 fuzz, outside its unfuzzed range, and no exact planted match
+    m = compute_metrics([_issue(Label.CODE_ONLY, code=[_code_finding(89, "db.py", 37)])], key)
+    assert m["false_alarms"]["count"] == 1
+
+
+def test_overlap_with_planted_and_unfuzzed_decoy_is_false_alarm():
+    key = _precedence_key()
+    # a finding spanning lines 29-32 exactly matches P1 and also overlaps D1's own range -> pessimistic
+    f = _code_finding(89, "db.py", 29).model_copy(
+        update={"code": CodeLocation(file="db.py", line_start=29, line_end=32)}
+    )
+    m = compute_metrics([_issue(Label.CODE_ONLY, code=[f])], key)
+    assert m["false_alarms"]["count"] == 1
+
+
 def test_is_suppressed_rule():
     assert is_suppressed(_issue(Label.CODE_ONLY, code=[_code_finding(89, "a.py", 1, suppressed=True)])) is True
     assert is_suppressed(_issue(Label.CODE_ONLY, code=[_code_finding(89, "a.py", 1, suppressed=False)])) is False
@@ -224,6 +275,10 @@ def test_is_suppressed_rule():
         )
         is False
     )
+    # B-15: a runtime-only issue is suppressed only when its runtime findings are all suppressed
+    rt_suppressed = _runtime_finding(79, "GET", "/a", "n").model_copy(update={"suppressed": True})
+    assert is_suppressed(_issue(Label.RUNTIME_ONLY, runtime=[rt_suppressed])) is True
+    assert is_suppressed(_issue(Label.RUNTIME_ONLY, runtime=[_runtime_finding(79, "GET", "/a", "n")])) is False
 
 
 def test_format_table_is_deterministic():
