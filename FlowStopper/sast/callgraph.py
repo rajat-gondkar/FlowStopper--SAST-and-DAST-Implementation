@@ -22,10 +22,10 @@ def build_call_graph(index: ProjectIndex, config: Optional[SastConfig] = None) -
     """Resolved call edges between project functions."""
     graph: CallGraph = {}
     for fn in index.functions.values():
-        local_types = _local_types(index, fn)
+        types = local_types(index, fn)
         callees: set[str] = set()
         for call in _own_calls(fn.node):
-            target = index.resolve_call(call, fn.module, fn, local_types)
+            target = index.resolve_call(call, fn.module, fn, types)
             if target is None:
                 continue
             if target in index.functions:
@@ -57,10 +57,20 @@ def reachable_functions(graph: CallGraph, start: str, max_depth: int) -> list[st
     return sorted(reached)
 
 
-def annotate_reachable(index: ProjectIndex, routes: list[Route], config: Optional[SastConfig] = None) -> list[Route]:
-    """Return copies of `routes` with `reachable_functions` filled from the call graph."""
+def annotate_reachable(
+    index: ProjectIndex,
+    routes: list[Route],
+    config: Optional[SastConfig] = None,
+    *,
+    graph: Optional[CallGraph] = None,
+) -> list[Route]:
+    """Return copies of `routes` with `reachable_functions` filled from the call graph.
+
+    Pass `graph` to reuse a graph the caller already built (the SAST runner builds it once and
+    shares it with the taint driver); omitted, the graph is built here as before.
+    """
     config = config or SastConfig()
-    graph = build_call_graph(index, config)
+    graph = build_call_graph(index, config) if graph is None else graph
     out: list[Route] = []
     for route in routes:
         reach = reachable_functions(graph, route.handler, config.max_call_depth) if route.handler in graph else []
@@ -69,8 +79,11 @@ def annotate_reachable(index: ProjectIndex, routes: list[Route], config: Optiona
 
 
 # --------------------------------------------------------------------------- helpers
-def _local_types(index: ProjectIndex, fn: FunctionInfo) -> dict[str, str]:
-    """Local variables assigned a project-class instance (`x = Service()` -> {"x": "...Service"})."""
+def local_types(index: ProjectIndex, fn: FunctionInfo) -> dict[str, str]:
+    """Local variables assigned a project-class instance (`x = Service()` -> {"x": "...Service"}).
+
+    Public because the taint engine resolves call sites exactly as the call graph does (P2-A2).
+    """
     types: dict[str, str] = {}
     for stmt in iter_block(fn.node.body):
         if isinstance(stmt, ast.Assign) and isinstance(stmt.value, ast.Call):

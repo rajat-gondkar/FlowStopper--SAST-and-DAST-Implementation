@@ -1,0 +1,148 @@
+"""P2-A5 template scan: unescaped variables plus the CWE-79 render-call keyword rule (Owner: A)."""
+
+from __future__ import annotations
+
+import ast
+
+from FlowStopper.sast.callgraph import annotate_reachable, build_call_graph
+from FlowStopper.sast.config import SastConfig
+from FlowStopper.sast.index import build_index
+from FlowStopper.sast.routes import extract_routes
+from FlowStopper.sast.taint import sinks
+from FlowStopper.sast.taint.summaries import TaintFinding, analyse_taint
+from FlowStopper.sast.templates import scan_template_text, scan_templates
+from tests.sast_helpers import make_tree
+
+# One handler, one template: `note` is rendered with |safe, `name` is escaped by Jinja.
+APP = {
+    "app.py": """
+        from flask import Flask, render_template, request
+
+        app = Flask(__name__)
+
+
+        @app.route("/product")
+        def product():
+            note = request.args.get("note", "")
+            name = request.args.get("name", "")
+            return render_template("product.html", note=note, name=name)
+    """,
+    "templates/product.html": """
+        <h1>{{ name }}</h1>
+        <div class="note">{{ note|safe }}</div>
+    """,
+}
+
+
+def _findings(tmp_path, files: dict[str, str], *, name: str = "app") -> list[TaintFinding]:
+    """Run the taint driver with the template index wired in, as the runner does (P2-A6)."""
+    root = make_tree(tmp_path / name, files)
+    config = SastConfig()
+    index = build_index(root, config)
+    graph = build_call_graph(index, config)
+    routes = annotate_reachable(index, extract_routes(index), config, graph=graph)
+    return analyse_taint(index, routes, graph, scan_templates(root, config), config)
+
+
+def _call_line(tmp_path, name: str, needle: str) -> int:
+    """1-based line of the only line in `name` containing `needle` (keeps assertions edit-proof)."""
+    lines = (tmp_path / "app" / name).read_text(encoding="utf-8").splitlines()
+    found = [number for number, text in enumerate(lines, start=1) if needle in text]
+    assert len(found) == 1, f"{needle!r} appears on {found} in {name}"
+    return found[0]
+
+
+# --------------------------------------------------------------------------- the tokeniser
+def test_safe_filter_marks_the_first_identifier():
+    found = scan_template_text("t.html", "<p>{{ note|safe }}</p>\n<p>{{ user.bio | safe }}</p>\n")
+    assert found.unescaped == {"note": (1,), "user": (2,)}
+
+
+def test_plain_and_hand_escaped_variables_are_not_reported():
+    text = '<p>{{ note }}</p>\n<p>{{ note|e }}</p>\n<p>{{ note|escape }}</p>\n<p>{{ "x"|safe }}</p>\n'
+    assert scan_template_text("t.html", text).unescaped == {}
+
+
+def test_explicit_escape_wins_inside_an_autoescape_false_block():
+    text = "{% autoescape false %}\n<p>{{ raw }}</p>\n<p>{{ clean|e }}</p>\n{% endautoescape %}\n<p>{{ after }}</p>\n"
+    assert scan_template_text("t.html", text).unescaped == {"raw": (2,)}
+
+
+def test_autoescape_off_block_marks_every_variable_until_it_ends():
+    text = "{% autoescape off %}{{ a }}{{ b }}{% endautoescape %}{{ c }}"
+    assert scan_template_text("t.html", text).unescaped == {"a": (1,), "b": (1,)}
+
+
+def test_markup_call_is_recorded_and_its_argument_is_unescaped():
+    found = scan_template_text("t.html", "<p>{{ Markup(note) }}</p>\n")
+    assert found.markup_lines == (1,)
+    assert found.unescaped == {"note": (1,)}
+
+
+def test_discovery_selects_by_extension_and_honours_exclude_dirs(tmp_path):
+    files = {
+        "pages/a.html": "{{ x|safe }}",
+        "pages/b.j2": "{{ y|safe }}",
+        "pages/notes.txt": "{{ z|safe }}",
+        "__pycache__/c.html": "{{ cached|safe }}",
+    }
+    index = scan_templates(make_tree(tmp_path, files))
+    assert sorted(index.files) == ["pages/a.html", "pages/b.j2"]
+    assert index.unescaped_variables == 2
+
+
+def test_template_name_resolves_by_path_suffix_shortest_first(tmp_path):
+    files = {
+        "templates/product.html": "{{ note|safe }}",
+        "themes/dark/templates/product.html": "{{ other|safe }}",
+        "templates/index.html": "{{ title }}",
+    }
+    index = scan_templates(make_tree(tmp_path, files))
+    assert index.unescaped("product.html") == {"note": [1]}  # shortest matching path wins
+    assert index.unescaped("dark/templates/product.html") == {"other": [1]}
+    assert index.unescaped("index.html") == {}  # escaped: nothing to report
+    assert index.unescaped("missing.html") == {}
+
+
+def test_context_dict_keys_count_as_template_variables():
+    call = ast.parse('render(request, "page.html", {"note": note, "pid": pid})').body[0].value
+    assert sinks.template_name(call) == "page.html"
+    assert sorted(sinks.template_context(call)) == ["note", "pid"]
+
+
+# --------------------------------------------------------------------------- end to end
+def test_unescaped_kwarg_is_one_xss_finding_at_the_render_call(tmp_path):
+    findings = _findings(tmp_path, APP)
+    assert len(findings) == 1, [f.rule_id for f in findings]
+    finding = findings[0]
+    assert (finding.cwe, finding.rule_id) == (79, "py.xss.template.unescaped")
+    assert finding.line_start == _call_line(tmp_path, "app.py", "render_template(")
+    assert finding.function == "app.product"
+    assert (finding.taint.source_param, finding.taint.entry_routes) == ("note", ["GET /product"])
+    assert finding.confidence == 0.9
+    assert finding.raw["source_params"] == ["note"]  # `name` is escaped, so it contributes nothing
+
+
+def test_safe_filter_without_tainted_data_is_not_a_finding(tmp_path):
+    files = {
+        "app.py": """
+            from flask import Flask, render_template
+
+            app = Flask(__name__)
+
+
+            @app.route("/product")
+            def product():
+                return render_template("product.html", note="a static note")
+        """,
+        "templates/product.html": "<div>{{ note|safe }}</div>",
+    }
+    assert _findings(tmp_path, files, name="app") == []
+
+
+def test_render_call_without_the_template_index_reports_nothing(tmp_path):
+    root = make_tree(tmp_path / "app", APP)
+    index = build_index(root)
+    graph = build_call_graph(index)
+    routes = annotate_reachable(index, extract_routes(index), graph=graph)
+    assert analyse_taint(index, routes, graph, None) == []  # A-18: the rule needs the template scan

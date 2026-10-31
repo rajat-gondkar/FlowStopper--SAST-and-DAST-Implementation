@@ -27,9 +27,23 @@ started. Dev B tracks their own in [`PROGRESS_Dev2.md`](PROGRESS_Dev2.md). Full 
 - **Exit (A) met:** correct `routes.json` for Mock A and the bench app; a unit test per route style;
   a call-graph test shows a handler reaching a helper in another file. `make check` green (146 tests).
 
-## Phase 2 — taint & secrets (next)
-- [ ] P2-A1 taint engine · P2-A2 summaries · P2-A3 sources/sinks/sanitizers · P2-A4 secrets
-  · P2-A5 templates · P2-A6 SAST runner findings.
+## Phase 2 — taint & secrets (COMPLETE)
+- [x] P2-A3 `sast/taint/{sources,sinks,sanitizers}.py` — the five spec sink rows with the argument
+  that matters, Flask/Django/FastAPI sources, per-CWE sanitisers and the path-sensitive-lite guards.
+  Decisions A-07, A-08, A-09, A-14, A-15, A-20, A-24.
+- [x] P2-A1 `sast/taint/engine.py` — statement-order intraprocedural walk, per-CWE clearance, branch
+  and loop joins, guard recognition. Decisions A-06, A-10, A-11, A-17.
+- [x] P2-A2 `sast/taint/summaries.py` — parametric summaries to a fixpoint + the handler-rooted
+  driver producing `source_param` / `entry_routes` / `call_chain`. Decisions A-12, A-13, A-16, A-22, A-23.
+- [x] P2-A4 `sast/secrets.py` — CWE-798 name/prefix/comparison/DSN/config detectors, entropy boost,
+  env-default exclusion; files selected by extension only (R6). Decision A-21.
+- [x] P2-A5 `sast/templates.py` — `|safe`, `autoescape false`, `Markup(...)`; template resolved by
+  path suffix and turned into the per-keyword CWE-79 sink. Decisions A-18, A-20.
+- [x] P2-A6 `sast/runner.py` — index → routes → call graph → templates → taint → secrets →
+  `SastResult`; stable ids, catalogue severities, snippets, counts-only stats. Decisions A-25, A-26.
+- **Exit (A) met:** Mock A code detection **13/13** planted code vulns (floor 12), **0** decoy false
+  alarms (ceiling 1), cross-file M01/M02/M05 all matched, every injection finding carrying
+  `taint.source_param` and real `entry_routes`. `make check` green (229 tests).
 
 ## Phase 3+ — [ ] pipeline/scan (P3-A1) · [ ] API/CLI/containers (P5) · [ ] README/THIRD_PARTY (P7).
 
@@ -51,3 +65,48 @@ _Log_
 - 2026-10-31 — Docs reorg: split per-developer `PROGRESS_Dev1/Dev2.md` and `DECISIONS_Dev1/Dev2.md`
   (ids `A-NN`/`B-NN`) to end merge conflicts; resolved a `B-01`/`B-02` collision (my SAST decisions →
   `A-01`/`A-02`; Dev B's → `B-01`/`B-02`). Shared Phase-0 decisions stay in `DECISIONS.md`.
+- 2026-10-31 — **P2-A3 done**: source/sink/sanitiser tables (`taint/sources.py`, `sinks.py`,
+  `sanitizers.py`) — the spec's five CWE rows with the argument that matters, the shell/list and
+  constant-SQL/bind distinctions, every sanitiser and guard pattern. `make check` green.
+- 2026-10-31 — **P2-A1 done**: `taint/engine.py` intraprocedural walk (f-strings, `+`/`%`/`.format`/
+  `.join`, containers, propagators, branch/try/loop joins, per-CWE clearance, guard recognition).
+- 2026-10-31 — **P2-A2 done**: `taint/summaries.py` parametric summaries to a fixpoint plus the
+  handler-rooted driver; cross-file flows report at the sink with `[handler, …, helper]`,
+  `source_param`, `source_kind` and `entry_routes`. 31 tests in `tests/test_sast_taint.py`.
+- 2026-10-31 — **P2-A4 done**: `sast/secrets.py` CWE-798 detector (name, provider prefix, literal
+  comparison, DSN, config key, env default) + config-file scan by extension; 26 tests. On Mock A it
+  reports C01/C02/C03 and stays silent on the `os.environ` decoy D08.
+- 2026-10-31 — **P2-A5 done**: `sast/templates.py` template scan (`|safe`, `autoescape false`,
+  `Markup`) wired into the taint driver as a per-keyword CWE-79 sink (`py.xss.template.unescaped`);
+  catches Mock A's M04 at the `render_template` call line. 11 tests.
+- 2026-10-31 — **P2-A6 done**: `sast/runner.py` emits findings (stable `ids.py` ids, catalogue
+  severities, ±1-line snippets, counts-only stats). **Mock A measured: 25 routes, 14 findings
+  (11 taint + 3 secrets, 1 of them the template rule), code detection 13/13 planted code vulns,
+  0 decoy false alarms, M01/M02/M05 matched, all 11 taint findings carrying `source_param` +
+  `entry_routes`; D04 reported suppressed as `safe:subprocess-list-no-shell`.** Phase 2 (Dev A)
+  complete; `make check` green (229 tests).
+- 2026-10-31 — **Phase 2 (Dev A) integration pass**: checked the seams between P2-A1/A2/A3, P2-A4
+  and P2-A5/A6 — rule ids and titles generated for all four taint rows in `fixtures/sast_findings.json`
+  match the oracle exactly, signatures line up across the three features (`summaries.TemplateLookup`
+  is `templates.TemplateLookup`, `summaries.SinkHit` is `engine.SinkReport`), findings come out
+  sorted by `(file, line, cwe, rule_id, id)`, and `stats` stayed counts-only and idempotent (the
+  same tree scanned at a second absolute path gives byte-identical findings and routes). One real
+  duplicate found and removed: the non-Python file walk and the size-capped text read now live once
+  in `sast/textfiles.py` (A-29). `make check` green (229 tests), Mock A still 25 routes / 14
+  findings, accuracy gate 6 passed.
+
+## Phase 4 backlog (from the Phase 2 semantic review — all misses, never wrong answers)
+Carry these into **P4-A1** (generic-rule backlog) / **P4-A2** (B-2 suppression):
+- [ ] **Template context splat invisible:** `sinks.template_context` skips `**kwargs`, so
+  `render_template("p.html", **ctx)` with a tainted value yields no CWE-79. Resolve a splat of a
+  local dict literal, or record it in `docs/LIMITATIONS.md` (Dev B finalises that file in P7-B1).
+- [ ] **Unreachable sinks are dropped, not suppressed:** the driver walks only route handlers, so a
+  sink no route reaches emits nothing. P4-A2 needs those findings to *exist* and be marked
+  `suppressed` with reason `unreachable` (never for CWE-798).
+- [ ] **`_is_abort` is too broad:** any unresolved `fail`/`exit`/`abort` leaf truncates the rest of
+  the block, silently losing flows. Narrow to resolved framework/stdlib names, or drop `fail`.
+- [ ] **Fixpoint cap is silent:** `compute_summaries` stops at `fixpoint_max_iterations` with no log;
+  a non-converged run shows only as `summary_iterations == 10` in stats. Log a warning.
+- [ ] **Receiver-based leaf matching is broad** (possible FP source): `PATH_ACCESS` fires on any
+  tainted receiver's `.open()`/`.read_text()`/`.write_text()`, SQL on `.raw`/`.extra`. Needs a
+  false-positive check against the real app in Phase 3/4.
