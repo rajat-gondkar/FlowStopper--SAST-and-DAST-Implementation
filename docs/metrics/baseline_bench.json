@@ -1,0 +1,55 @@
+{
+  "schema": "flowstopper-metrics/1",
+  "app": "vulnerable-flask-app",
+  "key": "bench/vulnerable-flask-app/answer_key.json",
+  "evaluated_at": "2026-10-31T17:03:58+00:00",
+  "source": {
+    "kind": "issues",
+    "scan_id": "1432faa06759cb2f",
+    "issues": "out/baseline_bench/issues.json",
+    "db": null
+  },
+  "run_time_s": 2.138,
+  "truncated": false,
+  "issues": {
+    "total": 9,
+    "reported": 9,
+    "suppressed": 0
+  },
+  "unplanted": 4,
+  "metrics": {
+    "code_detection": {
+      "found": 3,
+      "total": 4,
+      "rate": 0.75
+    },
+    "runtime_detection": {
+      "found": 1,
+      "total": 3,
+      "rate": 0.3333
+    },
+    "correct_links": {
+      "found": 0,
+      "total": 2,
+      "rate": 0.0
+    },
+    "wrong_links": {
+      "count": 0,
+      "confirmed": 0,
+      "rate": 0.0
+    },
+    "false_alarms": {
+      "count": 0,
+      "reported": 9,
+      "rate": 0.0
+    }
+  },
+  "status": {
+    "code_detection": "good",
+    "runtime_detection": "below",
+    "correct_links": "below",
+    "wrong_links": "n/a",
+    "false_alarms": "great",
+    "run_time": "great"
+  }
+}
