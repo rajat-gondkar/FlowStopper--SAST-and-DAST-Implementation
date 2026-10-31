@@ -100,6 +100,25 @@ lock files, `scripts/doctor.py`, Kiro steering. All module stubs created with ow
     stay safe - it lives inside the sealed directory, not `tests/` (B-07).
 
 ## Phase 3 — integration
+| P3-J1 baseline on the real app — A+B BLOCKED (no `target_src/` / `keys/` yet; not substituted)
+| P3-J2 triage + ranked `docs/BACKLOG.md` [done on Mock A] — A+B
+  - P3-J2: triaged a full live Mock A run into the spec's buckets — SAST miss 0, **DAST miss 3**,
+    link miss 0, wrong link 0, decoy false alarm 1, suppression error 0 — and wrote
+    `docs/BACKLOG.md` ranked by metric impact, with an owner and an evidence trail per item. No code
+    changed (triage only). Key findings: (1) **path parameters are never tested** — `seed_endpoints`
+    drops them when filling the URL, so `/docs/<path:name>`, `/api/orders/<id>` etc. get no checks at
+    all (root cause of the M08 miss; a whole class of blind spot, worse on the real app);
+    (2) cmdi only fires when the command's output is echoed, so `os.system` sinks are missed although
+    the exit code visibly changes (M05); (3) error-based SQLi depends on the target leaking DB error
+    text — the same scan with Flask debug off missed M02 entirely, which is the likely real-app
+    configuration, so this is the top real-app risk despite zero Mock A impact; (4) the single false
+    alarm is Appendix C's ±3 line fuzz letting decoy D01 swallow the genuine M02 finding at
+    `db.py:29`, not a wrong detection; (5) M06 is genuinely blind (identical responses) and
+    unfixable within R4, so it is an accepted limitation. Also flagged to Dev A that Mock A's key
+    omits two genuine bugs (`POST /login` `password`, `/download` `file` reflection).
+  - **Harness lesson:** the first triage run used Flask without `--debug`, which Mock A's README
+    specifies; that hid two planted bugs and understated runtime detection (61.5% vs 76.9%) and
+    correct links (60% vs 70%). Re-ran as documented before drawing any conclusion.
 | P3-B1 eval on stored scans + organiser-key converter [done; real-app run pending] — B
   - P3-B1: `evalkit/runner.py` + `commands.py` — `FlowStopper eval --key <key> --scan <id|latest>`
     scores a stored scan's snapshot (or `--issues <file>`, which also reads the `scan_meta.json`
@@ -198,3 +217,15 @@ _Log_
   A: 100% code / 61.5% runtime detection, 6/10 correct links, 0 wrong links, 6.2% false alarms, 4.9 s.
   `make check` green: 414 passed, 2 skipped (both self-skip: Mock A not running, bench app not
   fetched). Blocked on the organisers' app/key for the actual real-app run (P3-J1).
+- 2026-10-31 - Dev B: **P3-J2 complete** - triaged a live Mock A run (real SAST + DAST + correlator +
+  store, `--debug` as Mock A documents) into the spec's buckets and wrote the ranked
+  `docs/BACKLOG.md`. Measured: code detection 13/13 (100%), runtime detection 10/13 (76.9%), correct
+  links 7/10 (70%), wrong links 0/7, false alarms 1/21 (4.8%), run time 4.7 s, 5 unplanted. Buckets:
+  SAST miss 0, DAST miss 3, link miss 0, wrong link 0, decoy false alarm 1, suppression error 0 - so
+  **DAST coverage, not correlation, is the bottleneck** (every pair with both halves found linked at
+  score 1.0). Root causes confirmed by hand-probing, not inferred: path params are dropped by
+  `seed_endpoints` so those endpoints are never tested; cmdi needs the command's output echoed;
+  error-based SQLi needs the target to leak DB errors; the lone false alarm is a ±3-line fuzz
+  collision with a true positive; M06 is blind and unfixable within R4. **No code changed** - P3-J2 is
+  triage, and the fixes are Phase 4 items 1-5 in the backlog. `make check` still green: 414 passed,
+  2 skipped. **P3-J1 remains blocked** on the organisers' app/key and was not substituted.
