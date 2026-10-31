@@ -5,8 +5,8 @@ Dev B's own design decisions (ids `B-NN`, newest first). Joint/Phase-0 decisions
 prefix keeps our ids from ever colliding with Dev A's `A-` ids.
 
 > **Seeded by Person 1 during the per-dev docs split.** These are Dev B's two Phase-1 decisions, moved
-> out of the old shared `DECISIONS.md` and renumbered from `D-18`/`D-19` (which had collided with
-> Dev A's `D-18`/`D-19`). **Action for Dev B: done (2026-10-31)** — grepped
+> out of the old shared `DECISIONS.md` and renumbered from `B-01`/`B-02` (which had collided with
+> Dev A's `B-01`/`B-02`). **Action for Dev B: done (2026-10-31)** — grepped
 > `FlowStopper/` + `tests/` for `D-1[89]`: no code or test references existed (both decisions were
 > only ever cited in the docs), so nothing needed renaming. The one remaining `DECISIONS D-12`
 > citation in `correlate/issues.py` is correct: D-12 is a *shared* Phase-0 decision and still lives in
@@ -24,7 +24,7 @@ prefix keeps our ids from ever colliding with Dev A's `A-` ids.
   pre-existing match is not credible and we save two requests per param. (c) Each check returns at
   most **one** finding per (endpoint, param) — the first payload that proves the bug wins; collapsing
   the remaining payload variants into `raw` is P2-B3's job, so nothing is lost.
-- **B-02 (SQLi check, P1-B4)** _(formerly D-19)_: error-based evidence **short-circuits** the
+- **B-02 (SQLi check, P1-B4)** _(formerly B-02)_: error-based evidence **short-circuits** the
   boolean-differential probe — when an error fires we report it at confidence 0.9 and skip the ~12
   extra differential requests, rather than running both to claim the spec's combined 0.95 (revisit in
   P4 tuning if the extra signal is worth the requests). The differential is also skipped when the
@@ -32,7 +32,7 @@ prefix keeps our ids from ever colliding with Dev A's `A-` ids.
   baseline page already contains a SQL-error string (can't attribute it). Payloads are exactly
   Appendix B; a test (`tests/test_checks.py::test_only_appendix_b_payloads_are_sent`) asserts nothing
   else is sent (R4).
-- **B-01 (scope guard semantics, P0-B1)** _(formerly D-18)_: (a) `ALLOWED_HOSTS` env **replaces** the
+- **B-01 (scope guard semantics, P0-B1)** _(formerly B-01)_: (a) `ALLOWED_HOSTS` env **replaces** the
   base allow-list rather than extending it (matches the `DastConfig.allowed_hosts` "env overrides"
   note and the SETUP/`make bench` usage, which list `localhost,127.0.0.1,::1` explicitly);
   `--allow-host` extras merge on top and log a WARNING. A stray empty/whitespace `ALLOWED_HOSTS=` is

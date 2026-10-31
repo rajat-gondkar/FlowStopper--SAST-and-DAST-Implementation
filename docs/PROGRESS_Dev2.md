@@ -105,6 +105,6 @@ _Log_
   faithfully instead of double-encoded (decision **B-03**). 13 new tests (safe-look-alike decoys, R4
   provenance, canary-host-never-contacted, no-double-encoding). Verified against Dev A's merged
   Phase 1: `make check` green (158 passed, 1 skipped - the bench-app route test self-skips until
-  `make bench-fetch`). Also completed the docs-split follow-up: grepped for the old `D-18`/`D-19`
+  `make bench-fetch`). Also completed the docs-split follow-up: grepped for the old `B-01`/`B-02`
   ids - no code/test references existed - and repaired the provenance notes in `DECISIONS_Dev2.md`
   that a blind find/replace had mangled. Next for B: P2-B2 (passive/misconfiguration checks).

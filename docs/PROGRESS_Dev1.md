@@ -49,5 +49,5 @@ _Log_
   every planted Mock A bug run and confirmed to fire; decoys confirmed safe. Phase 1 (Dev A) complete;
   `make check` green (146 tests).
 - 2026-10-31 — Docs reorg: split per-developer `PROGRESS_Dev1/Dev2.md` and `DECISIONS_Dev1/Dev2.md`
-  (ids `A-NN`/`B-NN`) to end merge conflicts; resolved a `D-18`/`D-19` collision (my SAST decisions →
+  (ids `A-NN`/`B-NN`) to end merge conflicts; resolved a `B-01`/`B-02` collision (my SAST decisions →
   `A-01`/`A-02`; Dev B's → `B-01`/`B-02`). Shared Phase-0 decisions stay in `DECISIONS.md`.
