@@ -41,6 +41,12 @@ def correlate_command(
         int, typer.Option("--autoverify-budget", help="seconds for auto-verify probes (with --target)")
     ] = 60,
     seed: Annotated[int, typer.Option("--seed", help="seed for auto-verify canaries (reproducible)")] = 0,
+    allow_host: Annotated[
+        Optional[list[str]], typer.Option("--allow-host", help="extra allowed host (logs a WARNING), as for `dast`")
+    ] = None,
+    allow_mutating: Annotated[
+        bool, typer.Option("--allow-mutating", help="also send PUT/PATCH, as for `dast`")
+    ] = False,
 ) -> None:
     """Correlate SAST and DAST results into issues; with --target, auto-verify Code-only issues."""
     try:
@@ -58,7 +64,9 @@ def correlate_command(
         except (OSError, ValueError) as exc:
             typer.echo(f"correlate: bad authentication configuration: {exc}", err=True)
             raise typer.Exit(code=1) from exc
-        config = DastConfig(seed=seed, auth=auth)
+        config = DastConfig(
+            seed=seed, auth=auth, extra_allowed_hosts=list(allow_host or []), allow_mutating=allow_mutating
+        )
         deadline = time.monotonic() + autoverify_budget
         try:
             result = asyncio.run(auto_verify(issues, sast_result.routes, target, config, deadline=deadline))

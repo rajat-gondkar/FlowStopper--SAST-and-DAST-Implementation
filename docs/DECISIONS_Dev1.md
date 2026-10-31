@@ -3,6 +3,22 @@
 Dev A's own design decisions (ids `A-NN`, newest first). Joint/Phase-0 decisions are in the shared
 [`DECISIONS.md`](DECISIONS.md); Dev B's are in [`DECISIONS_Dev2.md`](DECISIONS_Dev2.md). Using an
 `A-` prefix keeps our ids from ever colliding with Dev B's `B-` ids.
+- **A-57 (bench VF02 stays unlinked)**: the 404-handler XSS is found by SAST (code-only, no route) and by
+  DAST (`dast.xss.unknown_path`, no route). Linking them would need a new correlator rule that matches a
+  route-less runtime finding to a route-less code finding, in Dev B's correlator, and it would raise the
+  wrong-link risk. We keep the two halves separate (prefer a missed link over a wrong one) and record it
+  as a known limitation. Revisit only if the organisers' app has a reflecting error page.
+- **A-56 (no credential values in scan_meta.json or the store)**: `run_pipeline` records the DAST config
+  with `auth` reduced to its shape (header and cookie *names*, login URL and method, `redacted: true`).
+  Login bodies and header/cookie values stay in memory only. Found while testing: the first `scan
+  --auth-config` run wrote the bench password into `scan_meta.json` and the `scans` table. Test:
+  `test_cli_scan_passes_auth_config_to_dast_and_autoverify`.
+- **A-55 (`scan` logs in and auto-verifies)**: `scan` takes `--auth-config`, `--header`, `--cookie`
+  (parsed by Dev B's `dast.commands.build_auth`, the same as `dast`), and runs Dev B's `auto_verify`
+  after `correlate` with the same `DastConfig`, so auto-verify uses the same login and scope. It is on
+  by default (`--no-autoverify` turns it off) with `--autoverify-budget` (default 60 s). Its stats go to
+  `scan_meta.json["autoverify"]` and its timing to `timings_s["autoverify"]`; a scope refusal fails the
+  scan with exit 1. Closes Dev B's two "Needs Dev A" items for the pipeline.
 - **A-54 (two more run-time lookup idioms turn `unreachable` off)**: `inspect.getmembers(...)`
   registries and a lookup function passed as a value (e.g. `functools.reduce(getattr, parts, mod)`)
   can reach any function, so they now count as a run-time lookup like A-52. Both were confirmed to

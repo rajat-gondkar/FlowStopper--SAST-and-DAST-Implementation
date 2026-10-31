@@ -153,6 +153,11 @@ _Log_
 - 2026-10-31 — **P3-J2 closed**: Dev B's `docs/BACKLOG.md` (Mock A items 1–6) plus a Dev A addendum
   (items 7–12: bench app results, DAST login support, VF02, the bench XSS false positive, secrets in
   test code, the Phase 2 review items, Mock A binding to 0.0.0.0) and a Phase 4 ownership split.
+- 2026-11-01 — **Phase 4 follow-ups done** (before Phase 5): `scan --auth-config/--header/--cookie` and
+  auto-verify after `correlate` (A-55); credential values kept out of `scan_meta.json` and the store
+  (A-56); bench VF02 left unlinked by decision (A-57). One `scan` command now gives, on Mock A: code
+  13/13, runtime 11/13, links 8/10, wrong 0/8, false alarms 0/19; on the bench, logged in: code 4/4,
+  runtime 3/3, links 1/2, wrong 0/1, false alarms 0/11. `make check` 537 passed.
 - 2026-10-31 — **Phase 4 (Dev A) done**: P4-A1/A2/A3 and BACKLOG 6, 8 (SAST half), 9-12 landed in
   three batches (A-37..A-51). Bench code detection 3/4 → 4/4, 0 wrong links on both targets, Mock A
   false alarms 1/21, pydantic proxy SAST 1.8 s.
