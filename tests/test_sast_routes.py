@@ -7,6 +7,7 @@ import pytest
 from FlowStopper.sast.index import build_index
 from FlowStopper.sast.routes import extract_routes
 from FlowStopper.sast.routes.resolver import join_paths, split_params, template_regex
+from tests.conftest import ROOT
 from tests.sast_helpers import make_tree
 
 
@@ -312,8 +313,13 @@ def test_django_path_repath_include_and_cbv(tmp_path):
 
 
 # --------------------------------------------------------------------------- real app sanity
+BENCH_SRC = ROOT / "bench" / "vulnerable-flask-app" / "src"
+
+
 def test_bench_flask_app_routes():
-    index = build_index("bench/vulnerable-flask-app/src")
+    if not BENCH_SRC.is_dir():
+        pytest.skip("benchmark app not fetched (git-ignored); run `make bench-fetch` to enable")
+    index = build_index(BENCH_SRC)
     ids = {r.id for r in extract_routes(index)}
     assert ids == {
         "GET /",
