@@ -148,6 +148,98 @@ def test_handler_param_sources_come_from_route_params(tmp_path):
     assert sources["name"].is_container is False
 
 
+def _json_route(fn, params: list[RouteParam]) -> Route:
+    return Route(
+        id="POST /tickets",
+        method="POST",
+        path_template="/tickets",
+        path_regex="^/tickets/?$",
+        handler=fn.qualname,
+        file=fn.file,
+        line_start=fn.line_start,
+        line_end=fn.line_end,
+        params=params,
+    )
+
+
+def test_handler_param_sources_seed_pydantic_body_as_json_container(tmp_path):
+    """A-65: a model-typed body param is a JSON container, but only when the route lists its fields."""
+    files = {"app.py": "def create(ticket, note=''):\n    return ticket\n"}
+    fn = build_index(make_tree(tmp_path / "app", files)).functions["app.create"]
+    fields = [RouteParam(name=n, location=ParamLocation.JSON) for n in ("subject", "priority")]
+    sources = handler_param_sources(fn, _json_route(fn, fields), {"ticket": ["subject", "priority"]})
+    assert (sources["ticket"].param_name, sources["ticket"].location_kind, sources["ticket"].is_container) == (
+        None,
+        ParamLocation.JSON,
+        True,
+    )
+    partial = handler_param_sources(fn, _json_route(fn, fields[:1]), {"ticket": ["subject", "priority"]})
+    assert "ticket" not in partial  # a field the route does not list: never guess
+    assert "ticket" not in handler_param_sources(fn, _json_route(fn, fields))  # no model map, no seed
+
+
+FASTAPI_BODY_APP = {
+    "app.py": """
+        import sqlite3
+
+        from fastapi import Depends, FastAPI
+        from pydantic import BaseModel
+
+        from store import save_ticket
+
+        app = FastAPI()
+
+
+        class Ticket(BaseModel):
+            subject: str = ""
+            priority: int = 0
+
+
+        class Plain:
+            subject = ""
+
+
+        def current_actor():
+            return Plain()
+
+
+        @app.post("/tickets")
+        def create(ticket: Ticket):
+            return {"id": save_ticket(ticket.subject)}
+
+
+        @app.post("/tickets/raw")
+        def create_raw(ticket: Ticket):
+            sqlite3.connect("t.db").execute("SELECT 1 WHERE s = '%s'" % ticket.priority)
+            return {}
+
+
+        @app.get("/me")
+        def me(actor: Plain = Depends(current_actor)):
+            sqlite3.connect("t.db").execute("SELECT 1 WHERE s = '%s'" % actor.subject)
+            return {}
+    """,
+    "store.py": """
+        import sqlite3
+
+
+        def save_ticket(subject):
+            sql = "INSERT INTO tickets (subject) VALUES ('" + subject + "')"
+            return sqlite3.connect("t.db").execute(sql).lastrowid
+    """,
+}
+
+
+def test_fastapi_pydantic_body_field_reaches_sink_across_modules(tmp_path):
+    """A-65: `body.field` on a pydantic body param is the JSON parameter `field`, followed into a helper."""
+    findings = _live(_by_cwe(_findings(tmp_path, FASTAPI_BODY_APP), 89))
+    got = sorted((f.file, f.taint.source_param, f.taint.source_kind, f.taint.entry_routes) for f in findings)
+    assert got == [
+        ("app.py", "priority", ParamLocation.JSON, ["POST /tickets/raw"]),
+        ("store.py", "subject", ParamLocation.JSON, ["POST /tickets"]),
+    ]  # the Depends() param with a plain class is not request data
+
+
 # --------------------------------------------------------------------------- P2-A3 sinks
 SINK_HEADER = """
 import os

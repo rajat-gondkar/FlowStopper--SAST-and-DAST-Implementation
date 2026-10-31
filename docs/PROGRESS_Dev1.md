@@ -119,6 +119,12 @@ started. Dev B tracks their own in [`PROGRESS_Dev2.md`](PROGRESS_Dev2.md). Full 
   scan, only `response_excerpt` of debug-traceback pages differs (Werkzeug frame ids per process).
   `make check` green (590 passed, 2 skipped: the two live Mock A tests).
 
+## Phase 6 (generalisation, both devs' areas, run by Dev A) — 2026-11-01
+- [x] Round 1 — FastAPI pydantic body params seeded as JSON containers so `body.field` taints as JSON
+  param `field` (A-65). Docker, before → after: Mock B code 10/13 → 12/13, links 6/10 → 7/10, wrong
+  0/6 → 0/7, false alarms 0/17 → 0/18; Mock A and bench unchanged (identical issue sets). Triage and
+  deferred items in [`metrics/phase6.md`](metrics/phase6.md). `make check` 699 passed, 2 skipped.
+
 ## Third-party benchmark (we45 Vulnerable-Flask-App) — Dev A owned
 - [x] Choose app + log (D-16); `make bench-fetch`/`make bench`; source-verified `answer_key.json`;
   scope via `ALLOWED_HOSTS` config only (R3); R6 guard extended to `bench/*/answer_key.json`;

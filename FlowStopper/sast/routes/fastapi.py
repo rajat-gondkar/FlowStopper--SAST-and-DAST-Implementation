@@ -68,6 +68,11 @@ def extract(index: ProjectIndex) -> list[Route]:
     return _FastAPIExtractor(index).run()
 
 
+def body_model_params(index: ProjectIndex, fn: FunctionInfo) -> dict[str, list[str]]:
+    """`{param: model field names}` for handler params FastAPI fills from a pydantic JSON body (A-65)."""
+    return _FastAPIExtractor(index).body_models(fn)
+
+
 class _FastAPIExtractor:
     def __init__(self, index: ProjectIndex) -> None:
         self.ix = index
@@ -212,6 +217,24 @@ class _FastAPIExtractor:
         if _leaf(model) in _SKIP_ANNOT:
             return [], False
         return [(name, ParamLocation.QUERY)], False
+
+    def body_models(self, fn: FunctionInfo) -> dict[str, list[str]]:
+        """Handler parameters `_classify` expands as a pydantic JSON body, with the model's field names."""
+        out: dict[str, list[str]] = {}
+        for arg, default in _iter_args(fn):
+            if arg.arg in ("self", "cls"):
+                continue
+            anno_type, marker = self._unwrap_annotated(arg.annotation, fn)
+            if isinstance(default, ast.Call):
+                marker = marker or default
+            if isinstance(marker, ast.Call):
+                leaf = _leaf(self.ix.resolve_expr(marker.func, fn.module, fn))
+                if leaf in _DEPENDS or leaf in _MARKER_LOCATION:
+                    continue
+            model = self.ix.resolve_expr(anno_type, fn.module, fn) if anno_type is not None else None
+            if model is not None and self._is_pydantic(model):
+                out[arg.arg] = self._model_fields(model)
+        return out
 
     def _unwrap_annotated(
         self, annotation: Optional[ast.expr], fn: FunctionInfo
