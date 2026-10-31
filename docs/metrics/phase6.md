@@ -75,3 +75,53 @@ Runtime-only issue became Confirmed, B06 appeared as Code only, and one new supp
 3. B10 + B32: probe the auth-config login route with the configured credentials, and run the cookie
    checks on the login response (DAST, medium).
 4. B06 runtime half: blind command injection, out of reach under R4 (no timing payloads).
+
+## Round 2 — 2026-11-01
+
+Goal: Mock B correct links ≥ 8/10 via B04, plus B33 if cheap and safe, with no metric worse on any
+target and 0 wrong links. **Met** (links 8/10, runtime +1).
+
+`python -m apps.mock_b.selfcheck`: all planted bugs fire and all decoys are safe (exit 0).
+
+### Before / after (Docker, same environment)
+
+| Target | Metric | Round 2 before | Round 2 after |
+| --- | --- | --- | --- |
+| Mock B | Code detection | 12/13 | **13/13** |
+| Mock B | Runtime detection | 10/14 | **11/14** |
+| Mock B | Correct links | 7/10 | **8/10** |
+| Mock B | Wrong links | 0/7 | 0/8 |
+| Mock B | False alarms | 0/18 | 0/19 |
+| Mock A | Code detection | 13/13 | 13/13 |
+| Mock A | Runtime detection | 12/13 | 12/13 |
+| Mock A | Correct links | 9/10 | 9/10 |
+| Mock A | Wrong links | 0/9 | 0/9 |
+| Mock A | False alarms | 0/19 | 0/19 |
+| Bench | Code detection | 4/4 | 4/4 |
+| Bench | Runtime detection | 3/3 | 3/3 |
+| Bench | Correct links | 1/2 | 1/2 |
+| Bench | Wrong links | 0/1 | 0/1 |
+| Bench | False alarms | 0/11 | 0/11 |
+
+Unplanted (informational) is unchanged: Mock B 2, Mock A 3, bench 4. Mock A and bench issue sets (id,
+label, CWE) are identical before and after; Mock A's verbose-error finding still points at
+`/api/crash`. Mock B: the B04 Runtime-only XSS became Confirmed (code location at the
+`TemplateResponse` call) and B33 appeared as one host-wide Runtime-only verbose-error issue. DAST
+requests: Mock B 701 → 705, Mock A 722 → 724, bench 544 → 546 (the plain GETs of A-68; no scan was
+truncated).
+
+### Fixes
+
+- A-67 · B04: Starlette `TemplateResponse(request=..., name="x.html", context=...)` keyword form,
+  `name=` read as the template and a local `context=` dict resolved, for `TemplateResponse` only
+  (`sast/taint/sinks.py`; tests in `tests/test_sast_templates.py`, including Flask `name=` staying a
+  variable).
+- A-68 · B33: one plain GET per param-less route-map GET route outside the passive sample, checked
+  with the existing `ERROR_MARKERS` and folded into the host-wide verbose-error finding
+  (`dast/checks/passive.py`; tests in `tests/test_passive.py`).
+
+### Deferred (round 3 starts here)
+
+1. B10 + B32: probe the auth-config login route with the configured credentials, and run the cookie
+   checks on the login response (DAST, medium).
+2. B06 runtime half: blind command injection, out of reach under R4 (no timing payloads).

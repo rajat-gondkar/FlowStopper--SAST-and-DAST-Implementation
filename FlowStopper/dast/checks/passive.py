@@ -33,6 +33,11 @@ EXPOSED_PATHS: tuple[tuple[str, int, float, str], ...] = (
     ("/robots.txt", 200, 0.3, r"(?i)(user-agent|disallow|allow)\s*:"),  # informational only
 )
 DEBUG_CONSOLE_PATH = "/console"
+# Param-less GET routes from the route map get one plain GET each for the verbose-error check (A-68):
+# no active check ever requests them. Capped so a huge route map cannot stretch the unbudgeted
+# passive pass, and session-ending paths are skipped so an authenticated scan keeps its session.
+ERROR_PROBE_LIMIT = 50
+SESSION_ENDING = re.compile(r"(?i)(log|sign)[-_]?(out|off)")
 
 # Generic framework-agnostic traceback / debug markers (no app-specific strings - R6).
 ERROR_MARKERS = re.compile(
@@ -109,6 +114,14 @@ def sample_paths(endpoints: list[Endpoint], limit: int = SAMPLE_PATHS) -> list[s
     paths = sorted({e.path for e in endpoints if e.method.upper() == "GET" and e.path})
     ordered = ["/"] + [p for p in paths if p != "/"]
     return ordered[:limit]
+
+
+def paramless_get_paths(endpoints: list[Endpoint], limit: int = ERROR_PROBE_LIMIT) -> list[str]:
+    """Sorted route-map GET paths that take no parameters, minus session-ending ones (A-68)."""
+    paths = {
+        e.path for e in endpoints if e.method.upper() == "GET" and e.route_id is not None and not e.params and e.path
+    }
+    return sorted(p for p in paths if not SESSION_ENDING.search(p))[:limit]
 
 
 def _missing_on(exchanges: dict[str, HttpExchange], header: str) -> list[str]:
@@ -311,11 +324,20 @@ def _directory_listing(ctx: CheckContext, exchanges: dict[str, HttpExchange]) ->
     ]
 
 
-async def _error_findings(ctx: CheckContext, base: str, exchanges: dict[str, HttpExchange]) -> list[Finding]:
-    """Verbose tracebacks on an unknown path, plus an exposed interactive debugger."""
+async def _error_findings(
+    ctx: CheckContext, base: str, exchanges: dict[str, HttpExchange], route_paths: list[str] | None = None
+) -> list[Finding]:
+    """Verbose tracebacks on sampled pages, an unknown path and param-less GET routes, plus an exposed debugger."""
     out: list[Finding] = []
     probes: dict[str, HttpExchange] = dict(exchanges)
     for path in (f"/{ctx.token()}", DEBUG_CONSOLE_PATH):  # random path -> generic, no app constant
+        try:
+            probes[path] = await ctx.client.get(base + path)
+        except (ScopeError, httpx.HTTPError):
+            continue
+    for path in route_paths or []:  # one plain GET per param-less route not already fetched (A-68)
+        if path in probes:
+            continue
         try:
             probes[path] = await ctx.client.get(base + path)
         except (ScopeError, httpx.HTTPError):
@@ -412,6 +434,6 @@ async def run(ctx: CheckContext, endpoints: list[Endpoint] | None = None) -> lis
     findings += await _cors_finding(ctx, base, rep)
     findings += _banner_findings(ctx, exchanges, rep)
     findings += _directory_listing(ctx, exchanges)
-    findings += await _error_findings(ctx, base, exchanges)
+    findings += await _error_findings(ctx, base, exchanges, paramless_get_paths(endpoints or []))
     findings += await _exposed_file_findings(ctx, base)
     return sorted(findings, key=lambda f: (f.cwe, f.rule_id))

@@ -124,6 +124,10 @@ started. Dev B tracks their own in [`PROGRESS_Dev2.md`](PROGRESS_Dev2.md). Full 
   param `field` (A-65). Docker, before → after: Mock B code 10/13 → 12/13, links 6/10 → 7/10, wrong
   0/6 → 0/7, false alarms 0/17 → 0/18; Mock A and bench unchanged (identical issue sets). Triage and
   deferred items in [`metrics/phase6.md`](metrics/phase6.md). `make check` 699 passed, 2 skipped.
+- [x] Round 2 — Starlette `TemplateResponse(name=..., context=...)` keyword form (A-67, B04) and a
+  verbose-error GET on param-less routes (A-68, B33, DAST on Dev B's behalf). Docker, before → after:
+  Mock B code 12/13 → 13/13, runtime 10/14 → 11/14, links 7/10 → 8/10, wrong 0/7 → 0/8, false alarms
+  0/18 → 0/19; Mock A and bench unchanged (identical issue sets). `make check` 707 passed, 2 skipped.
 
 ## Third-party benchmark (we45 Vulnerable-Flask-App) — Dev A owned
 - [x] Choose app + log (D-16); `make bench-fetch`/`make bench`; source-verified `answer_key.json`;

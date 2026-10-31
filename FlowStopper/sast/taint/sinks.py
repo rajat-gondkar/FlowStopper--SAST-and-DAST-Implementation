@@ -249,6 +249,11 @@ TEMPLATE_RENDER_LEAVES: frozenset[str] = frozenset({"render_template", "render_t
 # Keyword spellings of a render call's template name, and of a context dictionary passed as one value.
 TEMPLATE_NAME_KEYWORDS: frozenset[str] = frozenset({"template_name_or_list", "template_name", "template"})
 TEMPLATE_CONTEXT_KEYWORDS: frozenset[str] = frozenset({"context", "dictionary"})
+# Starlette's `Jinja2Templates.TemplateResponse(request=..., name="x.html", context={...})` (A-67): on
+# that renderer only, `name` is the template and `context` may be a local dict. Elsewhere `name` stays
+# a template variable, as in Flask's `render_template("x.html", name=v)`.
+TEMPLATE_RESPONSE_LEAF = "TemplateResponse"
+TEMPLATE_RESPONSE_NAME_KEYWORDS: frozenset[str] = frozenset({"name"})
 
 # Response wrappers that are safe for CWE-79 (spec: the decoys), and the content types they imply.
 SAFE_RESPONSES: frozenset[str] = frozenset(
@@ -452,13 +457,14 @@ def template_name(call: ast.Call) -> Optional[str]:
     """The template literal a render call names, else None (a computed name is never guessed, A-02).
 
     The first constant string argument wins, which covers both `render_template("page.html", ...)`
-    and Django's `render(request, "page.html", context)`.
+    and Django's `render(request, "page.html", context)`. Starlette's `TemplateResponse` also accepts
+    the template as `name=` (A-67).
     """
     for arg in call.args:
         text = const_str(arg)
         if text:
             return text
-    for name in sorted(TEMPLATE_NAME_KEYWORDS):
+    for name in sorted(_name_keywords(call)):
         text = const_str(keyword(call, name))
         if text:
             return text
@@ -472,26 +478,29 @@ def template_context(
 
     A `**ctx` splat counts when it is an inline dict literal, or a local name that `local_value`
     maps to a dict literal or a `dict(k=v, ...)` call (DECISIONS A-39); anything else is not guessed.
+    For Starlette's `TemplateResponse` a `context=` keyword or a positional argument that is such a
+    local dict counts the same way (A-67).
     """
     out: dict[str, ast.expr] = {}
     contexts: list[ast.Dict] = [arg for arg in call.args if isinstance(arg, ast.Dict)]
+    response = is_template_response(call)
+    if response:
+        for arg in call.args:
+            if isinstance(arg, ast.Name):
+                _add_context(_local_dict(arg, local_value), contexts, out)
+    name_keywords = _name_keywords(call)
     for word in call.keywords:
         if word.arg is None:
-            splat: Optional[ast.expr] = word.value
-            if isinstance(splat, ast.Name):
-                splat = local_value(splat.id) if local_value is not None else None
-            if isinstance(splat, ast.Dict):
-                contexts.append(splat)
-            elif isinstance(splat, ast.Call) and isinstance(splat.func, ast.Name) and splat.func.id == "dict":
-                for kw in splat.keywords:
-                    if kw.arg is not None:
-                        out.setdefault(kw.arg, kw.value)
+            _add_context(_local_dict(word.value, local_value), contexts, out)
             continue
-        if word.arg in TEMPLATE_NAME_KEYWORDS:
+        if word.arg in name_keywords:
             continue
-        if word.arg in TEMPLATE_CONTEXT_KEYWORDS and isinstance(word.value, ast.Dict):
-            contexts.append(word.value)  # a context dictionary: its keys are the variables
-            continue
+        if word.arg in TEMPLATE_CONTEXT_KEYWORDS:
+            if isinstance(word.value, ast.Dict):
+                contexts.append(word.value)  # a context dictionary: its keys are the variables
+                continue
+            if response and _add_context(_local_dict(word.value, local_value), contexts, out):
+                continue
         out[word.arg] = word.value
     for node in contexts:
         for key, value in zip(node.keys, node.values, strict=True):
@@ -499,6 +508,40 @@ def template_context(
             if text:
                 out.setdefault(text, value)
     return out
+
+
+def is_template_response(call: ast.Call) -> bool:
+    """`<templates>.TemplateResponse(...)`: Starlette's renderer, whose `name=` is the template (A-67)."""
+    return leaf_name(call.func) == TEMPLATE_RESPONSE_LEAF
+
+
+def _name_keywords(call: ast.Call) -> frozenset[str]:
+    """Keyword spellings of the template name for this render call."""
+    if is_template_response(call):
+        return TEMPLATE_NAME_KEYWORDS | TEMPLATE_RESPONSE_NAME_KEYWORDS
+    return TEMPLATE_NAME_KEYWORDS
+
+
+def _local_dict(
+    value: Optional[ast.expr], local_value: Optional[Callable[[str], Optional[ast.expr]]]
+) -> Optional[ast.expr]:
+    """`value`, or the single assigned value of local name `value` (None when it cannot be known)."""
+    if isinstance(value, ast.Name):
+        return local_value(value.id) if local_value is not None else None
+    return value
+
+
+def _add_context(node: Optional[ast.expr], contexts: list[ast.Dict], out: dict[str, ast.expr]) -> bool:
+    """Record a dict literal or `dict(k=v, ...)` call as template context; False for anything else."""
+    if isinstance(node, ast.Dict):
+        contexts.append(node)
+        return True
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "dict":
+        for kw in node.keywords:
+            if kw.arg is not None:
+                out.setdefault(kw.arg, kw.value)
+        return True
+    return False
 
 
 def shell_true(call: ast.Call) -> bool:

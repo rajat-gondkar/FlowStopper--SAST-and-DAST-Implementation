@@ -177,3 +177,99 @@ def test_splat_that_is_not_a_single_dict_assignment_is_not_guessed(tmp_path):
     }
     for case, assignments in cases.items():
         assert _findings(tmp_path, _splat_app(*assignments), name=case) == [], case
+
+
+# --------------------------------------------------------------------------- P6 r2: Starlette TemplateResponse (A-67)
+def _call(source: str) -> ast.Call:
+    return ast.parse(source).body[0].value
+
+
+def _locals(**sources: str):
+    """A `local_value` stand-in: each local name maps to the parsed expression it is assigned once."""
+    values = {name: ast.parse(text).body[0].value for name, text in sources.items()}
+    return values.get
+
+
+def test_template_response_keyword_form_names_the_template():
+    call = _call('pages.TemplateResponse(request=request, name="card.html", context={"note": note})')
+    assert sinks.template_name(call) == "card.html"
+    assert sorted(sinks.template_context(call)) == ["note", "request"]  # `name` is not a variable here
+
+
+def test_template_response_keyword_and_positional_mixes():
+    sources = [
+        'pages.TemplateResponse(request, "card.html", {"note": note})',
+        'pages.TemplateResponse(request, name="card.html", context={"note": note})',
+        'pages.TemplateResponse("card.html", context={"note": note})',
+        'pages.TemplateResponse("card.html", {"note": note}, status_code=200)',
+    ]
+    for source in sources:
+        call = _call(source)
+        assert sinks.template_name(call) == "card.html", source
+        assert "note" in sinks.template_context(call), source
+        assert "name" not in sinks.template_context(call), source
+
+
+def test_template_response_context_from_a_local_dict():
+    local = _locals(ctx='{"note": note, "title": "x"}', built="dict(note=note)")
+    for source in [
+        'pages.TemplateResponse(request=request, name="card.html", context=ctx)',
+        'pages.TemplateResponse(request, "card.html", ctx)',
+        'pages.TemplateResponse(request=request, name="card.html", context=built)',
+    ]:
+        context = sinks.template_context(_call(source), local)
+        assert "note" in context and "context" not in context, source
+    unknown = sinks.template_context(_call('pages.TemplateResponse(name="card.html", context=other)'), local)
+    assert sorted(unknown) == ["context"]  # an unknown local is not guessed
+
+
+def test_flask_name_keyword_stays_a_template_variable():
+    call = _call('render_template("card.html", name=value)')
+    assert sinks.template_name(call) == "card.html"
+    assert sorted(sinks.template_context(call)) == ["name"]
+    assert sinks.template_name(_call("render_template(name=value)")) is None
+    flask_local = sinks.template_context(_call('render_template("card.html", context=ctx)'), _locals(ctx='{"a": b}'))
+    assert sorted(flask_local) == ["context"]  # Flask behaviour unchanged: no local-dict resolution
+
+
+FASTAPI_CARD = """
+from fastapi import FastAPI, Query, Request
+from fastapi.templating import Jinja2Templates
+
+app = FastAPI()
+pages = Jinja2Templates(directory="templates")
+
+
+@app.get("/card")
+def card(request: Request, note: str = Query(""), title: str = Query("")):
+{body}
+"""
+CARD_TEMPLATE = "<h1>{{ title }}</h1>\n<p>{{ note|safe }}</p>\n"
+
+
+def test_template_response_keyword_form_is_a_template_xss_sink(tmp_path):
+    bodies = {
+        "literal": '    return pages.TemplateResponse(request=request, name="card.html", '
+        'context={"note": note, "title": title})',
+        "local": '    ctx = {"note": note, "title": title}\n'
+        '    return pages.TemplateResponse(request=request, name="card.html", context=ctx)',
+    }
+    for case, body in bodies.items():
+        files = {"main.py": FASTAPI_CARD.format(body=body), "templates/card.html": CARD_TEMPLATE}
+        findings = _findings(tmp_path, files, name=case)
+        assert [(f.rule_id, f.taint.source_param) for f in findings] == [("py.xss.template.unescaped", "note")], case
+
+
+def test_flask_name_variable_rendered_unescaped_is_still_a_finding(tmp_path):
+    files = {
+        "app.py": """
+            from flask import Flask, render_template, request
+            app = Flask(__name__)
+            @app.route("/card")
+            def card():
+                return render_template("card.html", name=request.args.get("name", ""))
+        """,
+        "templates/card.html": "<p>{{ name|safe }}</p>",
+    }
+    findings = _findings(tmp_path, files)
+    assert [(f.rule_id, f.taint.source_param) for f in findings] == [("py.xss.template.unescaped", "name")]

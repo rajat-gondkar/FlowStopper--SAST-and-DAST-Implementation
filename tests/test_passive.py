@@ -12,7 +12,8 @@ from FlowStopper.dast.checks import passive
 from FlowStopper.dast.checks.base import CheckContext
 from FlowStopper.dast.client import DastClient
 from FlowStopper.dast.config import DastConfig
-from FlowStopper.dast.types import Endpoint
+from FlowStopper.dast.types import Endpoint, Param
+from FlowStopper.models import ParamLocation
 from FlowStopper.scope import ScopeGuard
 
 GUARD = ScopeGuard(["localhost"])
@@ -265,6 +266,52 @@ def test_sample_paths_is_bounded_and_starts_at_root():
     paths = passive.sample_paths(eps)
     assert paths[0] == "/" and len(paths) == passive.SAMPLE_PATHS
     assert "/only-post" not in paths  # GET only
+
+
+def _route(path: str, *params: str, method: str = "GET") -> Endpoint:
+    """A route-map (seeded) endpoint with optional query params."""
+    return Endpoint(
+        method, f"http://localhost{path}", path, f"r{path}", [Param(p, ParamLocation.QUERY, "x") for p in params]
+    )
+
+
+def test_paramless_get_paths_keeps_only_parameterless_route_map_gets():
+    eps = [
+        _route("/b"),
+        _route("/a"),
+        _route("/with-q", "q"),
+        _route("/posted", method="POST"),
+        Endpoint("GET", "http://localhost/crawled", "/crawled", None, [], "crawl"),
+        _route("/account/logout"),
+        _route("/sign_off"),
+    ]
+    assert passive.paramless_get_paths(eps) == ["/a", "/b"]
+    many = [_route(f"/p{i:03d}") for i in range(passive.ERROR_PROBE_LIMIT + 5)]
+    assert len(passive.paramless_get_paths(many)) == passive.ERROR_PROBE_LIMIT
+
+
+async def test_verbose_error_on_a_paramless_route_beyond_the_sample():
+    """A-68: a param-less GET route outside the 5 sampled paths is still checked for tracebacks."""
+    seen: list[str] = []
+
+    def app(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.path)
+        if request.url.path == "/z/fail":
+            return httpx.Response(500, text='Traceback (most recent call last):\n  File "x.py", line 3, in v')
+        if request.url.path in {"/", "/a", "/b", "/c", "/d", "/z/q", "/z/logout"}:
+            return httpx.Response(200, text="<html>ok</html>", headers=HARDENED_HEADERS)
+        return httpx.Response(404, text="<html>not found</html>", headers=HARDENED_HEADERS)
+
+    eps = [_route(p) for p in ("/", "/a", "/b", "/c", "/d", "/z/fail", "/z/logout")] + [_route("/z/q", "q")]
+    assert "/z/fail" not in passive.sample_paths(eps)
+    ctx = _ctx(app)
+    found = _by_rule(await passive.run(ctx, eps))
+    await ctx.client.aclose()
+    err = found["dast.passive.verbose-error"]
+    assert (err.cwe, err.runtime.path, err.raw["affected_paths"]) == (209, "/z/fail", ["/z/fail"])
+    assert seen.count("/z/fail") == 1  # one plain GET
+    assert "/z/logout" not in seen and "/z/q" not in seen  # session-ending and param routes are not probed
+    assert ctx.sent_payloads == [passive.CORS_PROBE_ORIGIN]  # R4: a plain GET injects nothing
 
 
 async def test_only_the_cors_origin_probe_is_injected():

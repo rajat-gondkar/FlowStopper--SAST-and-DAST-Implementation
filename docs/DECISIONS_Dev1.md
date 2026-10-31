@@ -3,6 +3,34 @@
 Dev A's own design decisions (ids `A-NN`, newest first). Joint/Phase-0 decisions are in the shared
 [`DECISIONS.md`](DECISIONS.md); Dev B's are in [`DECISIONS_Dev2.md`](DECISIONS_Dev2.md). Using an
 `A-` prefix keeps our ids from ever colliding with Dev B's `B-` ids.
+- **A-69 (Phase 6 round 2 scope)**: round 2 ships B04 (A-67) and B33 (A-68) and stops at the goal
+  (Mock B links 8/10). B10/B32 (login-route probing) and B06 (blind cmdi, out of reach under R4) stay
+  deferred to later rounds.
+- **A-68 (verbose-error check on param-less GET routes, B33; DAST, on Dev B's behalf)**: the passive
+  pass samples only 5 GET paths, and a route without params gets no active check, so a traceback on
+  such a route was never seen. `passive._error_findings` now also sends **one plain GET** (no query,
+  no body, no header injected) to every route-map GET endpoint with no params (`route_id` set, empty
+  `params`) that the sample did not already fetch, and runs the existing `ERROR_MARKERS` on it. This
+  matches how Mock A's `/api/crash` is found today: the result goes into the same single host-wide
+  `dast.passive.verbose-error` finding (`affected_paths` lists every hit, the first path in sorted
+  order is the representative `runtime.path`), so there is no new rule, id scheme or per-route finding.
+  A plain GET carries no payload, so R4/Appendix B is unaffected: `ctx.sent_payloads` stays
+  `[CORS_PROBE_ORIGIN]` (as B-03 and `test_only_appendix_b_payloads_are_sent` require), GET is
+  already in the method policy, and every request goes through the scope-guarded client (R3). The
+  passive pass is unbudgeted (B-05), so the extra GETs are capped at `ERROR_PROBE_LIMIT = 50`, and
+  paths that look session-ending (`log/sign` + `out/off`) are skipped so an authenticated scan keeps
+  its session. Measured cost: +4 requests on Mock B, +2 on Mock A and +2 on the bench (crawled paths
+  push two param-less routes out of the 5-path sample there), with the same issue sets on Mock A and
+  the bench.
+- **A-67 (Starlette `TemplateResponse` keyword form, B04)**: `sinks.template_name` reads `name=` as
+  the template only when the call's leaf is `TemplateResponse` (Starlette/FastAPI
+  `Jinja2Templates.TemplateResponse(request=..., name="x.html", context={...})`); `is_template_render`
+  already rejects a project symbol with that leaf, and Django's `TemplateResponse` has no `name`
+  parameter, so the leaf check is enough without resolving the receiver. For the same calls only,
+  `context=` (or a positional argument) that is a local name assigned once to a dict literal or
+  `dict(k=v)` counts as the context, as A-39 does for `**ctx`. Flask is unchanged:
+  `render_template("x.html", name=v)` keeps `name` as a template variable and `context=ctx` is not
+  resolved there.
 - **A-66 (Phase 6 round 1 scope)**: round 1 ships one fix (A-65), the smallest set that reaches the
   round goal of 7/10 Mock B links. The other cheap SAST item, Starlette's keyword form
   `TemplateResponse(request=..., name="page.html", context={...})` (B04), is deferred to round 2 even
