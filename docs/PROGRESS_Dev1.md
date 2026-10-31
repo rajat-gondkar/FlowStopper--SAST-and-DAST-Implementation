@@ -45,7 +45,7 @@ started. Dev B tracks their own in [`PROGRESS_Dev2.md`](PROGRESS_Dev2.md). Full 
   alarms (ceiling 1), cross-file M01/M02/M05 all matched, every injection finding carrying
   `taint.source_param` and real `entry_routes`. `make check` green (229 tests).
 
-## Phase 3+ — [x] pipeline/scan (P3-A1) · [ ] API/CLI/containers (P5) · [ ] README/THIRD_PARTY (P7).
+## Phase 3+ — [x] pipeline/scan (P3-A1) · [x] API/CLI/containers (P5) · [ ] README/THIRD_PARTY (P7).
 - [x] P3-A1 `pipeline.py` `run_pipeline` + `FlowStopper scan` — SAST → DAST (seeded with routes) →
   correlate → SQLite → `issues.json` + `scan_meta.json`. **Mock A live: 25 routes, 14 SAST + 19 DAST
   findings (634 requests, DAST 2.1 s, total 2.1 s), 21 issues (7 confirmed, 6 code-only, 8 runtime-only;
@@ -97,6 +97,27 @@ started. Dev B tracks their own in [`PROGRESS_Dev2.md`](PROGRESS_Dev2.md). Full 
   (`getattr` with a computed name, `globals()`/`vars()`, `__dict__`, ...) (A-52); the content-type
   lookahead uses the last straight-line write, so a later `text/html` override keeps the XSS (A-53).
   SAST output on Mock A and the bench unchanged.
+
+## Phase 5 (Dev A) — 2026-11-01
+- [x] P5-A3 containers + `make demo` — Dockerfile (python:3.11-slim, uid 10001, writable `/app/data`
+  and `/app/out`, templates verified in the image), `docker-compose.yml` (read-only `/src`,
+  `ALLOWED_HOSTS`, named volume for the store) + `docker-compose.target.yml` for `${TARGET_NETWORK}`,
+  `make demo` / `make demo-down` (A-58, A-59, A-60). Live: `make demo` exit 0 over network
+  `mock_a_default`, 25 routes, 18 SAST + 21 DAST findings, 18 issues (confirmed 9, code-only 4,
+  runtime-only 5; 8 suppressed), `Report: …/out/demo/report.html`.
+- [x] P5-A1 `api.py` + `FlowStopper serve` — all seven endpoints, 202 + background `run_pipeline`
+  with a reserved scan id, R3 and source-path checks (400), no credential echo (A-61, A-62). Live in
+  compose: `/health` ok, `POST /scans` (`/src`, `http://mock_a:5050`) 202 → `completed` in ~2 s with
+  counts confirmed 9 / code-only 4 / runtime-only 5, `/report` 200 `text/html`, `/sarif` 200
+  `application/sarif+json`, `example.com` refused with 400; plain `docker compose up` (no env) serves
+  `/health` and keeps the store across restarts. `tests/test_api.py` (18 tests, 1 live).
+- [x] P5-A2 CLI polish — `scan --fail-on` (Dev B's gate, exit 2), `report.html`/`issues.sarif`/
+  `findings.md` next to `issues.json`, `scan --db`, help text, exit codes 0/1/2/64 (A-63, A-64; A-31
+  replaced). Live (host Mock A): `scan … --out out/p5a --fail-on confirmed:high` exit 2 with all five
+  files; eval code 13/13, runtime 11/13, links 8/10, wrong 0/8, false alarms 0/19 (same as before the
+  change); `issues.json` issue ids, labels, severities, risks and link scores identical to the pre-change
+  scan, only `response_excerpt` of debug-traceback pages differs (Werkzeug frame ids per process).
+  `make check` green (590 passed, 2 skipped: the two live Mock A tests).
 
 ## Third-party benchmark (we45 Vulnerable-Flask-App) — Dev A owned
 - [x] Choose app + log (D-16); `make bench-fetch`/`make bench`; source-verified `answer_key.json`;

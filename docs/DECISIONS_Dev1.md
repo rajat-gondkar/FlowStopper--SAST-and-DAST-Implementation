@@ -3,6 +3,59 @@
 Dev A's own design decisions (ids `A-NN`, newest first). Joint/Phase-0 decisions are in the shared
 [`DECISIONS.md`](DECISIONS.md); Dev B's are in [`DECISIONS_Dev2.md`](DECISIONS_Dev2.md). Using an
 `A-` prefix keeps our ids from ever colliding with Dev B's `B-` ids.
+- **A-64 (exit codes, refines A-33)**: 0 ok, 1 error, 2 only for the `scan --fail-on` CI gate, 64
+  (`EX_USAGE`) for usage errors (bad option or value, unknown command, no arguments). Click gives
+  every usage error exit 2, so `cli.main()` runs `app(standalone_mode=False)` and remaps. Typer 0.27
+  vendors Click (`typer._click`) and its only public base class for those errors is
+  `typer.exceptions.TyperException`, so `main()` catches that and maps `exit_code == 2` (Click's
+  usage code) to 64 instead of importing private classes. `CliRunner(app)` bypasses `main()`, so the
+  64 tests call `main()` with a patched `sys.argv`. Usage errors now print Click's plain message
+  instead of Typer's rich panel.
+- **A-63 (`--fail-on` and reports, replaces A-31)**: `scan` parses `--fail-on` with Dev B's
+  `report.gate.parse_fail_on` before anything runs (an invalid spec is a usage error, exit 64). After a
+  successful scan it writes `report.html`, `issues.sarif` and `findings.md` next to `issues.json`
+  (`pipeline.write_reports`, Dev B's renderers), prints the summary, then exits 2 if `gate_tripped`.
+  Reports are written by the CLI, not inside `run_pipeline`, so `issues.json`, `scan_meta.json` and
+  `timings_s` stay as they were; the API renders reports on demand from the store.
+- **A-62 (API validation, errors and secrets)**: `POST /scans` returns 400 when `source_path` is not a
+  directory or the R3 guard refuses the target (checked with `build_guard(cfg.allowed_hosts,
+  extra_hosts=cfg.extra_allowed_hosts).check(url)`, the same call `run_dast` makes), 422 for a malformed
+  body, 404 for an unknown scan or issue, and 409 for the report/SARIF of a scan that is not
+  `completed`. FastAPI's default 422 body echoes the submitted input (it would leak `options.auth`), so
+  a custom handler returns only `loc`/`msg`/`type`. `GET /scans/{id}` is built from explicit fields and
+  never returns the stored `config`. A background failure keeps its message in memory
+  (`app.state.errors`, lost on restart; the row still says `failed`), with any credential value from
+  the request replaced by `[REDACTED]`. `truncated` comes from the API-run scan's `scan_meta.json`
+  (null for scans the CLI ran elsewhere). `keep_secrets` stays an explicit opt-in, as on the CLI.
+- **A-61 (pre-generated scan id)**: `run_pipeline` takes `scan_id: Optional[str] = None` and uses it
+  as is; `_unique_scan_id` became public `unique_scan_id`. `POST /scans` (an `async def`, so id
+  reservations run one at a time on the event loop) computes the id, reserves the row with
+  `Storage.start_scan` (status `running`), returns 202, and the sync background task (Starlette's
+  thread pool, A-30) calls `run_pipeline(..., scan_id=id)`, whose `start_scan` upserts the same row.
+- **A-60 (`make demo` is Docker-only)**: `make demo` starts Mock A from `apps/mock_a/docker-compose.yml`,
+  waits up to 60 tries (1 s apart, 2 s curl timeout) for HTTP 200, reads Mock A's network from the
+  running container with `docker inspect` (it is `mock_a_default`), then runs the FlowStopper image
+  with the same `docker-compose.yml` + `docker-compose.target.yml` a judge uses for the real target
+  (`TARGET_SRC=./apps/mock_a`, `ALLOWED_HOSTS` += `mock_a`, target `http://mock_a:5050`). No host venv
+  is needed. Mock A is left running for inspection; `make demo-down` stops it. The Mock A names live
+  in the Makefile only (R6).
+- **A-59 (writable data for the non-root image)**: `scan --db` and `serve --db` read env
+  `FLOWSTOPPER_DB` (default still `.flowstopper/scans.db`); `serve --out-root` reads `FLOWSTOPPER_OUT`
+  (default `out/api`). The image sets `FLOWSTOPPER_DB=/app/data/scans.db`, `FLOWSTOPPER_OUT=/app/data/api`
+  and pre-creates `/app/data` and `/app/out` owned by uid 10001; compose mounts the named volume
+  `flowstopper-data` on `/app/data` (a fresh named volume copies that ownership), so the API's store
+  survives `down`/`up`. One-off scans into the `./out` bind mount run with `--user "$(id -u):$(id -g)"`
+  (`make demo` does), which keeps the bind mount writable on Linux as well as Colima/Docker Desktop.
+  A host uid cannot write the uid-10001 `/app/data` volume, so those one-off scans also pass
+  `-e FLOWSTOPPER_DB=/app/out/<dir>/.flowstopper/scans.db` (the store goes into the bind mount next
+  to the outputs); `make demo` and the recipe in `docker-compose.yml` both do. We keep `/app/data`
+  at mode 755 rather than making it world-writable.
+- **A-58 (target network via an override file)**: compose cannot make an external network optional,
+  so `docker-compose.yml` joins no target network and runs with nothing set, and
+  `docker-compose.target.yml` adds `networks: [default, target]` with `name: ${TARGET_NETWORK:?...}`,
+  `external: true` (a clear error if the variable is unset). It is not called
+  `docker-compose.override.yml` because compose auto-loads that name, which would break a plain
+  `docker compose up`.
 - **A-57 (bench VF02 stays unlinked)**: the 404-handler XSS is found by SAST (code-only, no route) and by
   DAST (`dast.xss.unknown_path`, no route). Linking them would need a new correlator rule that matches a
   route-less runtime finding to a route-less code finding, in Dev B's correlator, and it would raise the
@@ -143,7 +196,7 @@ Dev A's own design decisions (ids `A-NN`, newest first). Joint/Phase-0 decisions
 - **A-32 (storage location)**: `Storage`'s default path (`.flowstopper/scans.db`, git-ignored),
   not a DB per `--out`. Simpler, and it gives the P5 API, `eval --scan` and FR-6 upserts one shared
   store across scans. `run_pipeline(db_path=...)` overrides it (tests use `tmp_path`).
-- **A-31 (`--fail-on` is a no-op until P5)**: the CI gate (exit code 2) is Dev B's P5-B2 helper in
+- **A-31 (`--fail-on` is a no-op until P5; replaced by A-63)**: the CI gate (exit code 2) is Dev B's P5-B2 helper in
   `report/sarif.py`, which is still a stub, so `scan --fail-on` logs a WARNING ("not implemented
   until P5") and is ignored. P5-A2 wires it to B's helper; no gate logic lives in `pipeline.py`.
 - **A-30 (`run_pipeline` contract)**: a sync function `run_pipeline(source, target, out_dir, *,

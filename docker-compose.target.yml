@@ -1,0 +1,16 @@
+# Override: put the flowstopper service on the target app's compose network as well (P5-A3, A-58).
+# Use with the base file; TARGET_NETWORK is required here and nowhere else, so a plain
+# `docker compose up` keeps working when it is unset:
+#   TARGET_NETWORK=<network> docker compose -f docker-compose.yml -f docker-compose.target.yml up
+# Not named docker-compose.override.yml on purpose: compose auto-loads that name.
+
+services:
+  flowstopper:
+    networks:
+      - default
+      - target
+
+networks:
+  target:
+    name: ${TARGET_NETWORK:?set TARGET_NETWORK to the target app's compose network (see docker network ls)}
+    external: true

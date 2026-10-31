@@ -9,9 +9,9 @@ which refuses the target before opening any connection (R3). The live Mock A tes
 from __future__ import annotations
 
 import json
-import logging
 import os
 import socket
+import sys
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -19,7 +19,7 @@ import pytest
 from typer.testing import CliRunner
 
 from FlowStopper import pipeline
-from FlowStopper.cli import app
+from FlowStopper.cli import EX_USAGE, app, main
 from FlowStopper.correlate.autoverify import AutoVerifyResult
 from FlowStopper.cwe import get_cwe
 from FlowStopper.dast.config import DastConfig
@@ -308,14 +308,85 @@ def test_cli_scan_rejects_a_bad_source_dir(tmp_path, monkeypatch, fake_dast):
     assert fake_dast.calls == []
 
 
-def test_cli_fail_on_is_a_logged_no_op_until_p5(source, tmp_path, monkeypatch, fake_dast, caplog):
+REPORT_FILES = ("issues.json", "scan_meta.json", "report.html", "issues.sarif", "findings.md")
+
+
+def test_cli_scan_writes_the_reports_next_to_issues_json(source, tmp_path, monkeypatch, fake_dast):
     monkeypatch.chdir(tmp_path)
-    with caplog.at_level(logging.WARNING, logger="FlowStopper.pipeline"):
-        res = CliRunner().invoke(
-            app, ["scan", "--source", str(source), "--target", TARGET, "--out", "o", "--fail-on", "confirmed:high"]
-        )
-    assert res.exit_code == 0, res.output  # a Confirmed critical SQLi exists, yet no gate fires yet
-    assert any("not implemented until P5" in r.getMessage() for r in caplog.records)
+    res = CliRunner().invoke(app, ["scan", "--source", str(source), "--target", TARGET, "--out", "o"])
+    assert res.exit_code == 0, res.output
+    out = tmp_path / "o"
+    assert all((out / name).is_file() for name in REPORT_FILES)
+    assert (out / "report.html").read_text(encoding="utf-8").startswith("<!DOCTYPE html>")
+    assert isinstance(json.loads((out / "issues.sarif").read_text(encoding="utf-8")), dict)
+    assert (out / "findings.md").read_text(encoding="utf-8").strip()
+    assert "report.html" in res.output and "issues.sarif" in res.output and "findings.md" in res.output
+
+
+def test_cli_fail_on_trips_the_gate_and_still_writes_outputs(source, tmp_path, monkeypatch, fake_dast):
+    monkeypatch.chdir(tmp_path)
+    res = CliRunner().invoke(
+        app, ["scan", "--source", str(source), "--target", TARGET, "--out", "o", "--fail-on", "confirmed:high"]
+    )
+    assert res.exit_code == 2, res.output  # the Confirmed SQLi is critical, which is >= high
+    assert all((tmp_path / "o" / name).is_file() for name in REPORT_FILES)
+
+
+def _main_exit(monkeypatch, *args: str) -> int:
+    """Run the real console entry point (`cli.main`), which owns the exit-code mapping (A-64)."""
+    monkeypatch.setattr(sys, "argv", ["FlowStopper", *args])
+    with pytest.raises(SystemExit) as exc:
+        main()
+    return exc.value.code
+
+
+@pytest.mark.parametrize(
+    ("spec", "code"),
+    [("confirmed:high", 2), ("CONFIRMED:critical", 2), ("any:critical", 2), ("runtime_only:high", 0)],
+)
+def test_main_gate_exit_codes(source, tmp_path, monkeypatch, fake_dast, spec, code):
+    monkeypatch.chdir(tmp_path)
+    # The only runtime-only issue is the medium XSS, so runtime_only:high stays open.
+    assert _main_exit(monkeypatch, "scan", "--source", str(source), "--target", TARGET, "--fail-on", spec) == code
+
+
+def test_main_invalid_fail_on_is_a_usage_error_before_scanning(source, tmp_path, monkeypatch, fake_dast, capsys):
+    monkeypatch.chdir(tmp_path)
+    args = ["scan", "--source", str(source), "--target", TARGET, "--out", "o", "--fail-on", "code-only:high"]
+    assert _main_exit(monkeypatch, *args) == EX_USAGE
+    assert "--fail-on" in capsys.readouterr().err
+    assert fake_dast.calls == [] and not (tmp_path / "o").exists()
+
+
+def test_main_exit_codes_for_usage_errors_and_failures(tmp_path, monkeypatch, fake_dast):
+    monkeypatch.chdir(tmp_path)
+    assert _main_exit(monkeypatch, "scan", "--bogus") == EX_USAGE
+    assert _main_exit(monkeypatch, "no-such-command") == EX_USAGE
+    assert _main_exit(monkeypatch, "--version") == 0
+    assert _main_exit(monkeypatch, "scan", "--help") == 0
+    assert _main_exit(monkeypatch, "scan", "--source", str(tmp_path / "missing"), "--target", TARGET) == 1
+
+
+def test_cli_scan_db_option_and_env(source, tmp_path, monkeypatch, fake_dast):
+    monkeypatch.chdir(tmp_path)
+    res = CliRunner().invoke(app, ["scan", "--source", str(source), "--target", TARGET, "--out", "o", "--db", "x/s.db"])
+    assert res.exit_code == 0, res.output
+    assert (tmp_path / "x" / "s.db").is_file()
+    monkeypatch.setenv("FLOWSTOPPER_DB", str(tmp_path / "env" / "e.db"))
+    res = CliRunner().invoke(app, ["scan", "--source", str(source), "--target", TARGET, "--out", "o2"])
+    assert res.exit_code == 0, res.output
+    assert (tmp_path / "env" / "e.db").is_file() and not (tmp_path / ".flowstopper").exists()
+
+
+def test_run_pipeline_uses_a_reserved_scan_id(source, tmp_path, fake_dast):
+    db = tmp_path / "scans.db"
+    with Storage(db) as store:
+        store.start_scan(source_path=str(source), target_url=TARGET, config={}, seed=0, scan_id="reserved01")
+    result = _scan(source, tmp_path / "out", db, scan_id="reserved01")
+    assert result.scan_id == "reserved01" and result.meta["scan_id"] == "reserved01"
+    with Storage(db) as store:
+        (scan,) = store.list_scans()  # upserted, not duplicated
+        assert scan["id"] == "reserved01" and scan["status"] == "completed"
 
 
 # --------------------------------------------------------------------------- live (optional)

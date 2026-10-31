@@ -5,7 +5,7 @@ VENV   := .venv
 PY     := $(VENV)/bin/python
 
 .DEFAULT_GOAL := help
-.PHONY: help setup lint fmt test check schemas fixtures lock doctor validate-key demo bench-fetch bench bench-down clean
+.PHONY: help setup lint fmt test check schemas fixtures lock doctor validate-key demo demo-down bench-fetch bench bench-down clean
 
 help: ## list targets
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z_-]+:.*## / {printf "  %-13s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -49,8 +49,47 @@ doctor: ## check local prerequisites and repo state
 validate-key: $(PY) ## validate an answer key: make validate-key KEY=keys/answer_key.json
 	$(PY) -m FlowStopper.evalkit.keyschema $(KEY)
 
-demo: ## start Mock A and scan it end to end (implemented in P5-A3)
-	@echo "make demo is implemented in P5-A3 (Dev A)."; exit 1
+# `make demo` needs only Docker (with Compose) and make: Mock A runs from its own compose file, and
+# the FlowStopper image scans it over Mock A's compose network (DECISIONS_Dev1 A-60). The Mock A
+# names live here and in compose files, never in FlowStopper/ (R6). Never scans apps/mock_b.
+MOCK_A_COMPOSE   := apps/mock_a/docker-compose.yml
+MOCK_A_CONTAINER := flowstopper-mock-a
+MOCK_A_SERVICE   := mock_a
+MOCK_A_PORT      := 5050
+DEMO_OUT         := out/demo
+DEMO_WAIT_TRIES  := 60
+COMPOSE_TARGET   := docker compose -f docker-compose.yml -f docker-compose.target.yml
+
+demo: ## start Mock A in Docker and scan it end to end with the FlowStopper image (stop: make demo-down)
+	docker compose -f $(MOCK_A_COMPOSE) up -d --build
+	docker compose build flowstopper
+	@echo "waiting for Mock A on http://127.0.0.1:$(MOCK_A_PORT)/ ..."; \
+	i=0; \
+	until [ "$$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 http://127.0.0.1:$(MOCK_A_PORT)/)" = 200 ]; do \
+		i=$$((i + 1)); \
+		if [ $$i -ge $(DEMO_WAIT_TRIES) ]; then \
+			echo "Mock A did not answer HTTP 200 after $(DEMO_WAIT_TRIES) tries."; \
+			echo "Logs: docker compose -f $(MOCK_A_COMPOSE) logs; stop it: make demo-down"; \
+			exit 1; \
+		fi; \
+		sleep 1; \
+	done; \
+	echo "Mock A is up."
+	@set -e; \
+	NET=$$(docker inspect -f '{{range $$k, $$v := .NetworkSettings.Networks}}{{println $$k}}{{end}}' $(MOCK_A_CONTAINER) | head -n 1); \
+	if [ -z "$$NET" ]; then echo "cannot find the network of container $(MOCK_A_CONTAINER)"; exit 1; fi; \
+	echo "scanning http://$(MOCK_A_SERVICE):$(MOCK_A_PORT) over network $$NET"; \
+	mkdir -p $(DEMO_OUT); \
+	TARGET_SRC=./apps/mock_a TARGET_NETWORK=$$NET ALLOWED_HOSTS=localhost,127.0.0.1,::1,$(MOCK_A_SERVICE) \
+		$(COMPOSE_TARGET) run --rm -T --user "$$(id -u):$$(id -g)" \
+		-e FLOWSTOPPER_DB=/app/$(DEMO_OUT)/.flowstopper/scans.db \
+		flowstopper scan --source /src --target http://$(MOCK_A_SERVICE):$(MOCK_A_PORT) --out /app/$(DEMO_OUT)
+	@test -f $(DEMO_OUT)/report.html
+	@echo "Report: $(abspath $(DEMO_OUT))/report.html"
+	@echo "Mock A is still running; stop it with: make demo-down"
+
+demo-down: ## stop the Mock A container started by make demo
+	docker compose -f $(MOCK_A_COMPOSE) down
 
 bench-fetch: ## clone the pinned third-party benchmark app (git-ignored) and run it via Docker Compose
 	./scripts/bench_fetch.sh all
