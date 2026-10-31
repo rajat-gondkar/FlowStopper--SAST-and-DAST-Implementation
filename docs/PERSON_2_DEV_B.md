@@ -27,7 +27,10 @@ imports your command functions).
 - [x] **P0-J3 · `cwe.py`** written (shared) — confirm `get_cwe(89).vector` etc. work for your code.
 - [x] **P0-J4 · fixtures** present — these are your correlator/eval oracle. Read
   [`../fixtures/README.md`](../fixtures/README.md).
-- [ ] **P0-J2 sign-off** — review `models.py` + `ids.py`; once you and A agree, A tags `contract-v1`.
+- [x] **P0-J2 sign-off** — reviewed `models.py` / `cwe.py` / `ids.py` / `keyschema.py`; **Dev B
+  declares them final (2026-10-31), no changes requested** — all of Phase 1 (incl. the eval metrics
+  that reproduce `fixtures/expected_metrics.json`) was built against them unchanged. Awaiting Person 1
+  to tag `contract-v1`.
   After the tag, only additive changes, logged in [`CONTRACT_CHANGES.md`](CONTRACT_CHANGES.md).
 - [ ] **P0-J5 (you + A, local only)** help read the organisers' app/key into the git-ignored
   `docs/target_notes.local.md`.
