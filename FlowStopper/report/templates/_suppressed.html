@@ -1,0 +1,32 @@
+{#- Suppressed tab (B-27): findings judged safe or unreachable, with the humanised reason and the raw code. -#}
+{% from "_macros.html" import location %}
+<section class="panel" id="tab-suppressed" aria-labelledby="tab-suppressed-title">
+  <div class="wrap">
+    <div class="panel-head">
+      <div>
+        <h2 id="tab-suppressed-title">Suppressed</h2>
+        <p>Findings the engine judged safe or unreachable. These are not hidden issues; each row says why it was set aside.</p>
+      </div>
+    </div>
+    <div class="card table-wrap">
+    {% if suppressed %}
+      <table class="supp-table">
+        <caption>{{ suppressed|length }} suppressed {{ "finding" if suppressed|length == 1 else "findings" }} (safe / unreachable)</caption>
+        <thead><tr><th scope="col">Finding</th><th scope="col">Location</th><th scope="col">CWE</th><th scope="col">Why suppressed</th></tr></thead>
+        <tbody>
+        {% for v in suppressed %}
+          <tr>
+            <td>{{ v.issue.title }}</td>
+            <td class="loc">{{ location(v) }}</td>
+            <td class="cwe"><a href="{{ v.cwe_url }}" rel="noreferrer noopener" target="_blank">CWE-{{ v.issue.cwe }}</a></td>
+            <td>{% for code, text in v.suppressions %}<div><span class="why-text">{{ text[:1]|upper }}{{ text[1:] }}</span><span class="why-raw">{{ code }}</span></div>{% else %}<span class="muted">no reason recorded</span>{% endfor %}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="empty"><strong>Nothing was suppressed</strong><p>No finding in this scan was judged safe or unreachable.</p></div>
+    {% endif %}
+    </div>
+  </div>
+</section>

@@ -1,0 +1,122 @@
+{#- Overview tab (B-27): the security report a reader sees first. -#}
+{% from "_macros.html" import sev, location, icon %}
+<section class="panel" id="tab-overview" aria-labelledby="tab-overview-title">
+  <div class="wrap">
+    <div class="hero">
+      <div class="hero-main">
+        <p class="eyebrow" id="tab-overview-title">Overview</p>
+        <h2><span class="hero-num">{{ counts["confirmed"] }}</span><span class="word">Confirmed</span></h2>
+        <p class="hero-sentence">
+          {% if total %}<strong>{{ counts["confirmed"] }} of {{ total }}</strong> reported issues were found in the source code <em>and</em> proven against the running app. {{ counts["code_only"] }} were seen only in code and {{ counts["runtime_only"] }} only at runtime; {{ suppressed|length }} were judged safe or unreachable.
+          {% else %}No issues were reported for this target{% if suppressed %}; {{ suppressed|length }} findings were judged safe or unreachable{% endif %}.{% endif %}
+        </p>
+      </div>
+      <div class="card risk-card">
+        {% if top %}
+        <p class="k">Highest risk</p>
+        <p class="risk-value"><span class="n">{{ '%.1f'|format(top.risk) }}</span><span class="of">/ 10</span>{{ sev(top.severity.value, top.severity.value|capitalize) }}</p>
+        <div class="meter sev-{{ top.severity.value }}" role="img" aria-label="Risk {{ '%.1f'|format(top.risk) }} out of 10">
+          <span class="fill" style="width: {{ '%.1f'|format(top.risk * 10) }}%"></span>
+          <span class="tick" style="left: 40%"></span><span class="tick" style="left: 70%"></span><span class="tick" style="left: 90%"></span>
+        </div>
+        <p class="meter-scale" aria-hidden="true"><span>0</span><span>4</span><span>7</span><span>9</span><span>10</span></p>
+        {% set tv = reported|selectattr("issue.id", "equalto", top.id)|first %}
+        <p class="which"><a href="#{{ tv.anchor }}">{{ top.title }}</a></p>
+        {% else %}
+        <p class="k">Highest risk</p>
+        <p class="risk-value"><span class="n">&ndash;</span></p>
+        <p class="which muted">Nothing reported.</p>
+        {% endif %}
+      </div>
+    </div>
+    <dl class="meta">
+      <div><dt>Target</dt><dd class="mono">{{ meta.get("target") or "unknown" }}</dd></div>
+      {% if meta.get("source") %}<div><dt>Source</dt><dd class="mono">{{ meta.get("source") }}</dd></div>{% endif %}
+      {% if scanned %}<div><dt>Scanned</dt><dd><time datetime="{{ scanned_iso }}">{{ scanned }}</time></dd></div>{% endif %}
+      {% if duration %}<div><dt>Duration</dt><dd>{{ duration }}</dd></div>{% endif %}
+    </dl>
+    {% if meta.get("truncated") %}
+    <p class="note">The DAST time budget was reached, so some runtime checks did not run. Results may be incomplete.</p>
+    {% endif %}
+
+    {% if total %}
+    <div class="section split">
+      <div class="card dist">
+        <h3>Severity distribution</h3>
+        <div class="segbar" role="img" aria-label="{% for s, n, _ in segments %}{{ s|capitalize }} {{ n }}{{ ', ' if not loop.last else '' }}{% endfor %}">
+          {% for s, n, pct in segments %}<span class="sev-{{ s }}" style="flex-grow: {{ n }}"></span>{% endfor %}
+        </div>
+        <ul class="legend">
+          {% for s, n in severities.items() %}
+          <li>{{ sev(s, s|capitalize) }}<span class="n">{{ n }}</span></li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div class="labels">
+        <h3>How each issue was found</h3>
+        <div class="card lblock primary">
+          <div class="n">{{ counts["confirmed"] }}</div>
+          <div class="w">Confirmed</div>
+          <p>In the code and proven at runtime. Fix these first.</p>
+        </div>
+        <div class="card lblock">
+          <div class="n">{{ counts["code_only"] }}</div>
+          <div class="w">Code only</div>
+          <p>Seen in the source; not proven at runtime.</p>
+        </div>
+        <div class="card lblock">
+          <div class="n">{{ counts["runtime_only"] }}</div>
+          <div class="w">Runtime only</div>
+          <p>Proven at runtime; no code location found.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h3>Fix first</h3>
+      <p class="lede">The highest-priority issues: Confirmed first, then by risk.</p>
+      <ol class="fixfirst">
+        {% for v in fix_first %}
+        <li class="card ff">
+          <div class="ff-top">
+            <span class="ff-risk">{{ '%.1f'|format(v.issue.risk) }} <small>risk</small></span>
+            {{ sev(v.issue.severity.value, v.severity_text) }}
+          </div>
+          <h4>{{ v.issue.title }}</h4>
+          <span class="loc">{{ v.endpoint or v.code_where }}{% if v.endpoint and v.code_where %} &middot; {{ v.code_where }}{% endif %}</span>
+          {% if v.proof_line %}<p class="proof">{{ v.proof_line }}</p>{% endif %}
+          <div><span class="label label-{{ v.issue.label.value }}">{{ v.label_text }}</span></div>
+          <a class="open" href="#{{ v.anchor }}">Open details{{ icon("arrow") }}</a>
+        </li>
+        {% endfor %}
+      </ol>
+    </div>
+    {% endif %}
+
+    <div class="section">
+      <h3>All reported issues</h3>
+      <div class="card table-wrap">
+      {% if reported %}
+        <table class="issues-table">
+          <caption>{{ total }} reported issues, Confirmed first, then by risk (0-10). Select a title for its proof and fix.</caption>
+          <thead><tr><th scope="col">Risk</th><th scope="col">Severity</th><th scope="col">Label</th><th scope="col">Issue</th><th scope="col">Location</th><th scope="col">CWE</th></tr></thead>
+          <tbody>
+          {% for v in reported %}
+            <tr>
+              <td class="risk">{{ '%.1f'|format(v.issue.risk) }}</td>
+              <td>{{ sev(v.issue.severity.value, v.severity_text) }}</td>
+              <td><span class="label label-{{ v.issue.label.value }}">{{ v.label_text }}</span></td>
+              <td class="title"><a href="#{{ v.anchor }}">{{ v.issue.title }}</a></td>
+              <td class="loc">{{ location(v) }}</td>
+              <td class="cwe"><a href="{{ v.cwe_url }}" rel="noreferrer noopener" target="_blank">CWE-{{ v.issue.cwe }}</a></td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p class="empty"><strong>No reported issues</strong>Nothing reportable was found on this target.</p>
+      {% endif %}
+      </div>
+    </div>
+  </div>
+</section>
