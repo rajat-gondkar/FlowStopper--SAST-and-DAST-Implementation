@@ -23,6 +23,7 @@ Budgets and safety:
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from dataclasses import dataclass, field
 from typing import Optional
@@ -40,6 +41,8 @@ from FlowStopper.scope import ScopeError, build_guard
 
 # Every active check runs for every injectable param; the order only affects reporting.
 ACTIVE_CHECKS = (sqli, xss, cmdi, traversal, redirect)
+
+logger = logging.getLogger("FlowStopper.dast")
 
 SAFE_METHODS = frozenset({"GET", "POST", "HEAD", "OPTIONS"})
 MUTATING_METHODS = frozenset({"PUT", "PATCH"})  # only with allow_mutating
@@ -163,6 +166,15 @@ async def run_dast(target_url: str, routes: list[Route], config: Optional[DastCo
     async with DastClient(guard, config) as client:
         ctx = CheckContext.create(client, base, config)
 
+        # Authenticate first: routes behind a session answer 401/403 to everything otherwise, so
+        # discovery and every check would be testing the login wall instead of the app (item 7).
+        auth = await client.authenticate()
+        if auth.attempted and not auth.ok:
+            logger.warning(
+                "DAST login failed (%s); continuing unauthenticated - routes requiring a session will not be reachable",
+                auth.detail or f"status {auth.status}",
+            )
+
         discovered = await discovery.discover(client, base, routes, config)
         endpoints = order_endpoints([e for e in discovered if e.method.upper() in allowed])
 
@@ -223,5 +235,6 @@ async def run_dast(target_url: str, routes: list[Route], config: Optional[DastCo
         "methods": sorted(allowed),
         "allow_mutating": config.allow_mutating,
         "payloads_sent": len(ctx.sent_payloads),
+        "auth": auth.as_stats(),
     }
     return DastResult(findings=findings, stats=stats)

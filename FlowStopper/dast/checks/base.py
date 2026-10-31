@@ -26,8 +26,20 @@ from FlowStopper.models import Engine, Finding, ParamLocation, RuntimeLocation
 INJECTABLE = (ParamLocation.QUERY, ParamLocation.FORM, ParamLocation.JSON, ParamLocation.PATH)
 
 
-def build_request(endpoint: Endpoint, param: Param, value: str) -> tuple[str, str, dict]:
-    """Build (method, url, kwargs) that injects `value` into `param`, other params left benign."""
+def build_request(
+    endpoint: Endpoint,
+    param: Param,
+    value: str,
+    reserved_headers: frozenset[str] = frozenset(),
+) -> tuple[str, str, dict]:
+    """Build (method, url, kwargs) that injects `value` into `param`, other params left benign.
+
+    `reserved_headers` (lower-cased) are headers the client already sends - a session token, say.
+    A route often *reads* such a header, so the route map lists it as a parameter; filling it with a
+    benign placeholder would overwrite the real token and quietly un-authenticate every request,
+    sending the whole scan back to the login wall. Those headers are therefore left alone unless the
+    header itself is the parameter under test.
+    """
     buckets: dict[ParamLocation, dict[str, str]] = {loc: {} for loc in ParamLocation}
 
     def value_for(p: Param) -> str:
@@ -36,6 +48,9 @@ def build_request(endpoint: Endpoint, param: Param, value: str) -> tuple[str, st
         return p.value or benign_value(p.name)
 
     for p in endpoint.params:
+        is_target = p.name == param.name and p.location is param.location
+        if p.location is ParamLocation.HEADER and not is_target and p.name.lower() in reserved_headers:
+            continue
         buckets[p.location][p.name] = value_for(p)
     if param.location is not ParamLocation.PATH and param.name not in buckets[param.location]:
         buckets[param.location][param.name] = value
@@ -64,14 +79,19 @@ def build_request(endpoint: Endpoint, param: Param, value: str) -> tuple[str, st
     return endpoint.method.upper(), url, kw
 
 
-def build_raw_query_request(endpoint: Endpoint, param: Param, raw_value: str) -> tuple[str, str, dict]:
+def build_raw_query_request(
+    endpoint: Endpoint,
+    param: Param,
+    raw_value: str,
+    reserved_headers: frozenset[str] = frozenset(),
+) -> tuple[str, str, dict]:
     """Like build_request, but splices `raw_value` into the query string **verbatim**.
 
     Needed for Appendix B payloads that are themselves percent-encoded (the `..%2f` traversal
     variant): httpx would re-encode the `%` and send `..%252f`, so the target would only ever see a
     literal `%2f` instead of the separator the payload is testing for.
     """
-    method, url, kw = build_request(endpoint, param, raw_value)
+    method, url, kw = build_request(endpoint, param, raw_value, reserved_headers)
     others = {k: v for k, v in (kw.pop("params", {}) or {}).items() if k != param.name}
     query = urlencode(others)
     raw = f"{param.name}={raw_value}"
@@ -111,10 +131,17 @@ class CheckContext:
     def small_ints(self) -> tuple[int, int]:
         return self.rng.randint(11, 29), self.rng.randint(31, 49)
 
+    @property
+    def reserved_headers(self) -> frozenset[str]:
+        """Headers the client already sends (e.g. a session token) - never overwrite them."""
+        return self.client.default_header_names
+
     async def baseline(self, endpoint: Endpoint, param: Param) -> Baseline:
         key = (endpoint.key, param.name, param.location.value)
         if key not in self._baselines:
-            method, url, kw = build_request(endpoint, param, param.value or benign_value(param.name))
+            method, url, kw = build_request(
+                endpoint, param, param.value or benign_value(param.name), self.reserved_headers
+            )
             self._baselines[key] = await establish_baseline(self.client, method, url, **kw)
         return self._baselines[key]
 
@@ -122,9 +149,9 @@ class CheckContext:
         """Send one payload. `raw_query` splices an already-encoded payload into the query verbatim."""
         self.sent_payloads.append(payload)
         if raw_query and param.location is ParamLocation.QUERY:
-            method, url, kw = build_raw_query_request(endpoint, param, payload)
+            method, url, kw = build_raw_query_request(endpoint, param, payload, self.reserved_headers)
         else:
-            method, url, kw = build_request(endpoint, param, payload)
+            method, url, kw = build_request(endpoint, param, payload, self.reserved_headers)
         return await self.client.request(method, url, **kw)
 
 
