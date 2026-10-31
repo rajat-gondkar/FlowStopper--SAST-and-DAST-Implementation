@@ -411,7 +411,41 @@ endpoints, 508 requests.
   (+ a recorded `status`) instead of dropping to `properties`; evidence text no longer breaks
   mid-word. `make check` 671 passed, 1 skipped with Mock A stopped (672 passed, 0 skipped while it ran).
 
-## Phase 6 — generalisation ⬜  ·  ## Phase 7 — release ⬜
+## Phase 6 — generalisation 🚧  ·  ## Phase 7 — release ⬜
+
+- **HTML report as a light, multi-tab page (Dev B, branch `b/p6-html`, B-27/B-28) [done].** Files:
+  `report/html.py`, `report/common.py`, `report/templates/report.html` + new partials (`_styles.css`,
+  `_icons.html`, `_macros.html`, `_overview.html`, `_issues.html`, `_evaluation.html`, `_method.html`,
+  `_suppressed.html`), `tests/test_report_html.py`.
+  - *Before (P5):* dark-capable single long page: purple/pink gradient logo tile, five equal stat cards,
+    rainbow severity bar, pills on everything, ISO timestamp and scan id in the header. *Before (this
+    branch, round 1, never committed):* a plain light restyle that was still one long page, cramped,
+    with small inconsistent type and bare `+0.00` reasons; replaced.
+  - *After:* five CSS-only, hash-driven tabs (Overview, Issues, Evaluation, Schema and method,
+    Suppressed) under a frosted sticky header. Overview: "9 Confirmed" hero plus a 0-10 risk meter for
+    the worst issue (9.8, Critical), meta row, one segmented severity bar with labelled counts, label
+    split with Confirmed emphasised, three "Fix first" cards, full table (56 px rows, two-line
+    Location). Issues: sticky list with its own scroll beside the selected issue; proof first, uniform
+    chips, one value size in the key/value grid, call chain as boxes with arrows, reasons with the
+    human text first and `same_cwe · weight +0.00` muted. Evaluation: per-metric value, count,
+    Good/Great ticks, status word and a computed summary ("6 of 7 at Great, 0 at Good, 0 below Good,
+    1 not measured" on Mock A). Schema and method: SVG pipeline, labels, severity bands, risk factors
+    and correlation rules read from `CorrelateConfig`, finding format generated from the models.
+    Suppressed: humanised reason plus the raw code.
+  - Checked on a live Mock A scan (scan `85cedd2c0eba2df3`: 19 reported, 9 confirmed, 8 suppressed;
+    eval 13/13, 12/13, 9/10, 0/9, 0/19, 6.2 s) in headless Chrome at 1280 px and a real 390 px
+    viewport for every tab and `#issue-3`: page scroll width 375 <= 390 on all six views; tables and
+    the tab bar scroll inside their own containers; the Issues list stacks above the detail. Print
+    layout checked by applying the print rules on screen: every panel in order, tab bar and list
+    hidden, all cards shown. Output: no `<script>`, no `xmlns`, no `url(`, no dark-mode CSS, only
+    `<a href>` absolute URLs, 19 issue cards, 3 masked secrets, no answer-key path. Fixed during the
+    check: the severity card stretched to the label column's height; the "Issues" box text overflowed
+    in the SVG; "Open details" links showed in print.
+  - Eval is not wired into a call site yet (B-28): the `report.html` written by `scan` shows "Not
+    evaluated". The evaluated `out/a/report.html` was rendered with a throwaway script calling
+    `render_html(..., eval_report=...)`. Suggested follow-up: `--eval PATH` on `FlowStopper report`
+    (Dev B's `report/commands.py`).
+  - `make check` 743 passed, 2 skipped (main baseline today: 699 passed, 2 skipped).
 
 ## Third-party benchmark (we45 Vulnerable-Flask-App) — cross-phase
 

@@ -1,0 +1,127 @@
+{#- Issues tab (B-27): sticky list on the left, the selected issue (:target, first by default) on the right. -#}
+{% from "_macros.html" import sev, icon %}
+<section class="panel" id="tab-issues" aria-labelledby="tab-issues-title">
+  <div class="wrap">
+    <div class="panel-head">
+      <div>
+        <h2 id="tab-issues-title">Issues</h2>
+        <p>Proof first: what was sent and seen, where it lives in the code, why the two were linked, and how to fix it.</p>
+      </div>
+    </div>
+    {% if reported %}
+    <div class="md">
+      <div class="card ilist-wrap">
+        <p class="ilist-head">{{ total }} reported, in priority order</p>
+        <ol class="ilist">
+          {% for v in reported %}
+          <li><a href="#{{ v.anchor }}"><span class="r">{{ '%.1f'|format(v.issue.risk) }}</span><span class="t">{{ v.issue.title }}</span><span class="m">{{ sev(v.issue.severity.value, v.severity_text) }}<span>{{ v.label_text }}</span></span></a></li>
+          {% endfor %}
+        </ol>
+      </div>
+      <div class="detail">
+      {% for v in reported %}
+      {% set i = v.issue %}
+      <article class="card issue" id="{{ v.anchor }}" aria-labelledby="{{ v.anchor }}-title">
+        <div class="issue-head">
+          <p class="eyebrow">#{{ v.rank }} &middot; {{ i.id }}</p>
+          <h3 id="{{ v.anchor }}-title">{{ i.title }}</h3>
+          <div class="chips">
+            <span class="chip">{{ sev(i.severity.value, v.severity_text) }}</span>
+            <span class="chip label-{{ i.label.value }}">{{ v.label_text }}</span>
+            <span class="chip"><span class="k">Risk</span> {{ '%.1f'|format(i.risk) }} / 10</span>
+            <span class="chip"><span class="k">CVSS 3.1</span> {{ '%.1f'|format(i.cvss) }}</span>
+            <a class="chip" href="{{ v.cwe_url }}" rel="noreferrer noopener" target="_blank">CWE-{{ i.cwe }} <span class="k">{{ v.cwe_name }}</span></a>
+            {% if v.owasp %}<a class="chip" href="{{ owasp_url }}" rel="noreferrer noopener" target="_blank"><span class="k">OWASP</span> {{ v.owasp }}</a>{% endif %}
+            {% if i.verified_by %}<span class="chip"><span class="k">Verified by</span> {{ i.verified_by }}</span>{% endif %}
+          </div>
+        </div>
+
+        {% if v.runtime %}{% set rt = v.runtime %}
+        <div class="block">
+          <h4>{{ icon("globe") }}Runtime proof</h4>
+          <dl class="kv">
+            <dt>Request</dt><dd class="mono">{{ rt.method }} {{ rt.url }}</dd>
+            {% if rt.param %}<dt>Parameter</dt><dd><code>{{ rt.param }}</code>{% if rt.param_location %} <span class="muted">in {{ rt.param_location.value }}</span>{% endif %}</dd>{% endif %}
+            {% if rt.payload %}<dt>Payload</dt><dd><code>{{ rt.payload }}</code></dd>{% endif %}
+            <dt>Proof</dt><dd>{{ rt.proof }}</dd>
+            {% if rt.evidence %}<dt>Evidence</dt><dd class="prose">{{ rt.evidence }}</dd>{% endif %}
+          </dl>
+        </div>
+        {% endif %}
+
+        {% if v.code %}{% set c = v.code %}
+        <div class="block">
+          <h4>{{ icon("code") }}Code location</h4>
+          <dl class="kv">
+            <dt>File</dt><dd class="mono">{{ c.file }}:{{ c.line_start }}{% if c.line_end != c.line_start %}-{{ c.line_end }}{% endif %}</dd>
+            {% if c.function %}<dt>Function</dt><dd class="mono">{{ c.function }}</dd>{% endif %}
+            {% if v.source_param %}<dt>Source</dt><dd><code>{{ v.source_param }}</code>{% if v.source %} <span class="muted">read at</span> <span class="mono">{{ v.source.file }}:{{ v.source.line_start }}</span>{% endif %}</dd>{% endif %}
+            {% if v.call_chain %}
+            <dt>Call chain</dt>
+            <dd><ol class="chain" aria-label="Call chain, from the route handler to the dangerous call">
+              {% for fn in v.call_chain %}<li>{% if not loop.first %}{{ icon("arrow") }}{% endif %}<span class="fn">{{ fn }}</span></li>{% endfor %}
+            </ol></dd>
+            {% endif %}
+          </dl>
+          {% if v.snippet %}
+          <div class="snippet"><pre class="code"><code>{% for l in v.snippet %}<span class="line{% if l.hot %} hot{% endif %}"><span class="ln">{{ l.number }}</span>{{ l.text }}</span>{% endfor %}</code></pre></div>
+          {% endif %}
+        </div>
+        {% endif %}
+
+        {% if i.reasons %}
+        <div class="block">
+          <h4>{{ icon("link") }}{% if i.label.value == "confirmed" %}Why these were linked{% else %}Correlation notes{% endif %}</h4>
+          <ul class="reasons">
+            {% for r in i.reasons %}
+            <li><p class="d">{{ r.detail }}</p><p class="x">{{ r.kind }} &middot; weight {{ '%+.2f'|format(r.weight) }}</p></li>
+            {% endfor %}
+          </ul>
+          {% if i.link_score is not none %}<p class="reasons-foot">Link score {{ '%.2f'|format(i.link_score) }}; a link needs at least {{ '%.2f'|format(link_min) }}.</p>{% endif %}
+        </div>
+        {% endif %}
+
+        {% if v.fix %}
+        <div class="block">
+          <h4>{{ icon("tool") }}How to fix</h4>
+          <div class="fix">
+            {% for kind, text in v.fix %}{% if kind == "code" %}<pre>{{ text }}</pre>{% else %}<p>{{ text }}</p>{% endif %}
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+
+        {% if v.runtime and v.runtime.repro_curl %}
+        <div class="block">
+          <h4>{{ icon("terminal") }}Reproduce</h4>
+          <pre class="wrap-text">{{ v.runtime.repro_curl }}</pre>
+        </div>
+        {% endif %}
+
+        {% if v.runtime and (v.runtime.request or v.runtime.response_excerpt) %}
+        <details class="raw"><summary>Raw request and response</summary>
+          <div class="raw-grid">
+            {% if v.runtime.request %}<div><h5>Request</h5><pre class="wrap-text">{{ v.runtime.request }}</pre></div>{% endif %}
+            {% if v.runtime.response_excerpt %}<div><h5>Response (excerpt)</h5><pre class="wrap-text">{{ v.runtime.response_excerpt }}</pre></div>{% endif %}
+          </div>
+        </details>
+        {% endif %}
+
+        {% if v.others %}
+        <div class="block">
+          <h4>Also merged into this issue</h4>
+          <ul class="others">
+            {% for o in v.others %}<li>{{ o.engine|upper }} <span class="mono">{{ o.rule_id }}</span> <span class="muted mono">{{ o.where }}</span></li>{% endfor %}
+          </ul>
+        </div>
+        {% endif %}
+        <a class="to-list" href="#tab-overview">Back to the overview</a>
+      </article>
+      {% endfor %}
+      </div>
+    </div>
+    {% else %}
+    <div class="card empty"><strong>No reported issues</strong><p>Nothing reportable was found on this target.</p></div>
+    {% endif %}
+  </div>
+</section>

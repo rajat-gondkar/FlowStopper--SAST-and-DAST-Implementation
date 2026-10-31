@@ -1,0 +1,17 @@
+{#- Shared macros for the report partials (B-27). Autoescape applies inside macros too (R7). -#}
+{% macro sev(value, text) -%}
+<span class="sev sev-{{ value }}"><span class="mark" aria-hidden="true"></span>{{ text }}</span>
+{%- endmacro %}
+
+{% macro location(v) -%}
+{% if v.endpoint %}<span class="loc-main">{{ v.endpoint }}</span>{% if v.code_where %}<span class="loc-sub">{{ v.code_where }}</span>{% endif %}
+{% elif v.code_where %}<span class="loc-main">{{ v.code_where }}</span>{% endif %}
+{%- endmacro %}
+
+{% macro icon(name) -%}
+<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-{{ name }}"></use></svg>
+{%- endmacro %}
+
+{% macro status(s, text) -%}
+<span class="status st-{{ s }}">{{ icon({"great": "check", "good": "check", "below": "alert"}.get(s, "minus")) }}{{ text }}</span>
+{%- endmacro %}

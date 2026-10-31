@@ -1,0 +1,64 @@
+{#- Evaluation tab (B-27/B-28). Only aggregate counts and rates from the eval JSON; never answer-key contents. -#}
+{% from "_macros.html" import status, icon %}
+<section class="panel" id="tab-evaluation" aria-labelledby="tab-evaluation-title">
+  <div class="wrap">
+    <div class="panel-head">
+      <div>
+        <h2 id="tab-evaluation-title">Evaluation</h2>
+        <p>Where the tool stands against the product targets. These are our own development measurements, not an official score.</p>
+      </div>
+    </div>
+    {% if ev.present %}
+    <div class="card ev-summary">
+      <p class="big">{{ ev.summary }}</p>
+      <p>Measured on <strong>{{ ev.app or "an unnamed app" }}</strong>{% if ev.scan_id %} (scan <span class="mono">{{ ev.scan_id }}</span>){% endif %} against our own answer key{% if ev.evaluated %}, evaluated {{ ev.evaluated }}{% endif %}. Not the organisers' score.{% if ev.truncated %} The DAST time budget was reached in that scan.{% endif %}</p>
+    </div>
+    {% if ev.scan_mismatch %}<p class="note">This evaluation is for a different scan than the one in this report.</p>{% endif %}
+    <ol class="card ev-rows">
+      {% for r in ev.rows %}
+      <li class="ev-row">
+        <div><p class="ev-name">{{ r.name }}</p><p class="ev-def">{{ r.definition }}</p></div>
+        <div class="ev-v">
+          {% if r.value_pct is none %}<p class="ev-val nm">Not measured</p>{% else %}<p class="ev-val">{{ r.value_text }}</p>{% if r.count_text %}<p class="ev-count">{{ r.count_text }}</p>{% endif %}{% endif %}
+        </div>
+        <div class="ev-bar">
+          <div class="track st-{{ r.status }}" role="img" aria-label="{{ r.name }}: {{ r.value_text }}; Good {{ r.good_text }}, Great {{ r.great_text }}">
+            {% if r.higher_is_better %}
+            <span class="zone good" style="left: {{ '%.1f'|format(r.good_pct) }}%; width: {{ '%.1f'|format(r.great_pct - r.good_pct) }}%"></span>
+            <span class="zone great" style="left: {{ '%.1f'|format(r.great_pct) }}%; right: 0"></span>
+            {% else %}
+            <span class="zone great" style="left: 0; width: {{ '%.1f'|format(r.great_pct) }}%"></span>
+            <span class="zone good" style="left: {{ '%.1f'|format(r.great_pct) }}%; width: {{ '%.1f'|format(r.good_pct - r.great_pct) }}%"></span>
+            {% endif %}
+            {% if r.value_pct is not none %}<span class="fill" style="width: {{ '%.1f'|format(r.value_pct) }}%"></span>{% endif %}
+            <span class="tick" style="left: {{ '%.1f'|format(r.good_pct) }}%"></span><span class="tick" style="left: {{ '%.1f'|format(r.great_pct) }}%"></span>
+          </div>
+          <p class="track-legend"><span>Good {{ r.good_text }}</span><span>Great {{ r.great_text }}</span><span>{{ "higher is better" if r.higher_is_better else "lower is better" }}</span></p>
+          {% if r.note %}<p class="ev-note">{{ r.note }}</p>{% endif %}
+        </div>
+        <div class="ev-st">{{ status(r.status, r.status_text) }}</div>
+      </li>
+      {% endfor %}
+    </ol>
+    {% else %}
+    <div class="card empty">
+      <strong>Not evaluated</strong>
+      <p>This scan has not been scored against an answer key. Run <code>FlowStopper eval --key &lt;answer key&gt; --issues issues.json --out eval.json</code> and render the report with that file to see the scores here.</p>
+    </div>
+    <div class="section">
+      <h3>What gets measured</h3>
+      <div class="card table-wrap">
+        <table class="targets">
+          <caption>Product targets each metric is graded against.</caption>
+          <thead><tr><th scope="col">Metric</th><th scope="col">Definition</th><th scope="col">Good</th><th scope="col">Great</th></tr></thead>
+          <tbody>
+          {% for r in ev.rows %}
+            <tr><td><strong>{{ r.name }}</strong></td><td class="muted">{{ r.definition }}</td><td class="num">{{ r.good_text }}</td><td class="num">{{ r.great_text }}</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</section>

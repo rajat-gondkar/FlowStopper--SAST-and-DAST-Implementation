@@ -1,355 +1,70 @@
-{#- FlowStopper HTML report (Owner: B, P5-B1). Autoescape is on: never use |safe here (R7). -#}
+{#- FlowStopper HTML report (Owner: B, P5-B1; multi-tab redesign P6, B-27). Autoescape is on: never use |safe (R7).
+    One self-contained page: inline CSS and inline SVG, no scripts or external assets. Tabs are CSS-only, driven
+    by the URL hash with :target and :has(); without :has() support every panel simply stacks. -#}
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="light dark">
-<title>FlowStopper report{% if meta.get("target") %} · {{ meta.get("target") }}{% endif %}</title>
+<meta name="color-scheme" content="light">
+<title>FlowStopper security report{% if meta.get("target") %}: {{ meta.get("target") }}{% endif %}</title>
 <style>
-:root {
-  --bg: #f6f7f9; --surface: #ffffff; --sunken: #f1f3f6; --text: #16191d; --muted: #5d6573;
-  --border: #e3e6eb; --accent: #4f46e5; --accent-soft: rgba(79, 70, 229, .10);
-  --c-confirmed: #c81e1e; --b-confirmed: rgba(200, 30, 30, .10);
-  --c-code: #a35a00; --b-code: rgba(217, 119, 6, .13);
-  --c-runtime: #1d4ed8; --b-runtime: rgba(37, 99, 235, .11);
-  --s-critical: #b91c1c; --s-high: #ea580c; --s-medium: #ca8a04; --s-low: #2563eb; --s-info: #6b7280;
-  --hot: rgba(234, 88, 12, .12); --hot-edge: #ea580c;
-  --radius: 12px; --shadow: 0 1px 2px rgba(16, 24, 40, .04), 0 1px 3px rgba(16, 24, 40, .06);
-  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0e1013; --surface: #161a20; --sunken: #1c2129; --text: #e7e9ec; --muted: #9aa3b0;
-    --border: #272d37; --accent: #8b83ff; --accent-soft: rgba(139, 131, 255, .14);
-    --c-confirmed: #f87171; --b-confirmed: rgba(248, 113, 113, .14);
-    --c-code: #fbbf24; --b-code: rgba(251, 191, 36, .13);
-    --c-runtime: #60a5fa; --b-runtime: rgba(96, 165, 250, .14);
-    --s-critical: #f87171; --s-high: #fb923c; --s-medium: #facc15; --s-low: #60a5fa; --s-info: #9ca3af;
-    --hot: rgba(251, 146, 60, .14); --hot-edge: #fb923c; --shadow: none;
-  }
-}
-* { box-sizing: border-box; }
-html { scroll-behavior: smooth; }
-body {
-  margin: 0; background: var(--bg); color: var(--text);
-  font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  -webkit-font-smoothing: antialiased;
-}
-a { color: var(--accent); text-decoration: none; }
-a:hover { text-decoration: underline; }
-code, pre, .mono { font-family: var(--mono); font-size: 13px; }
-.wrap { max-width: 1120px; margin: 0 auto; padding: 40px 24px 64px; }
-h1, h2, h3 { line-height: 1.25; margin: 0; letter-spacing: -.01em; }
-h1 { font-size: 28px; font-weight: 650; }
-h2 { font-size: 18px; font-weight: 620; margin: 44px 0 14px; }
-h3 { font-size: 16px; font-weight: 600; }
-.muted { color: var(--muted); }
-.small { font-size: 13px; }
-
-/* header */
-.brand { display: flex; align-items: center; gap: 10px; font-weight: 600; color: var(--muted); font-size: 13px;
-  text-transform: uppercase; letter-spacing: .08em; margin-bottom: 10px; }
-.logo { width: 22px; height: 22px; border-radius: 7px; background: linear-gradient(135deg, var(--accent), #ec4899); }
-.meta { display: flex; flex-wrap: wrap; gap: 8px 28px; margin: 18px 0 0; padding: 0; }
-.meta div { min-width: 0; }
-.meta dt { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
-.meta dd { margin: 2px 0 0; font-weight: 500; word-break: break-all; }
-.banner { margin-top: 18px; padding: 10px 14px; border-radius: 10px; background: var(--b-code); color: var(--c-code);
-  font-weight: 500; }
-
-/* stats */
-.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-top: 28px; }
-.stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px;
-  box-shadow: var(--shadow); }
-.stat .n { font-size: 28px; font-weight: 650; letter-spacing: -.02em; }
-.stat .k { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 7px; }
-.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; background: var(--muted); flex: none; }
-.dot.confirmed { background: var(--c-confirmed); } .dot.code_only { background: var(--c-code); }
-.dot.runtime_only { background: var(--c-runtime); }
-.dot.critical { background: var(--s-critical); } .dot.high { background: var(--s-high); }
-.dot.medium { background: var(--s-medium); } .dot.low { background: var(--s-low); } .dot.info { background: var(--s-info); }
-.sevbar { display: flex; height: 8px; border-radius: 99px; overflow: hidden; background: var(--sunken); margin-top: 18px; }
-.sevbar span { display: block; height: 100%; }
-.sevbar .critical { background: var(--s-critical); } .sevbar .high { background: var(--s-high); }
-.sevbar .medium { background: var(--s-medium); } .sevbar .low { background: var(--s-low); }
-.sevbar .info { background: var(--s-info); }
-.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 10px; font-size: 13px; color: var(--muted); }
-.legend span { display: inline-flex; align-items: center; gap: 6px; }
-
-/* pills */
-.pill { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 99px; font-size: 12px;
-  font-weight: 600; white-space: nowrap; }
-.pill.confirmed { color: var(--c-confirmed); background: var(--b-confirmed); }
-.pill.code_only { color: var(--c-code); background: var(--b-code); }
-.pill.runtime_only { color: var(--c-runtime); background: var(--b-runtime); }
-.sev { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; text-transform: capitalize;
-  white-space: nowrap; }
-.tag { display: inline-block; padding: 1px 8px; border-radius: 6px; background: var(--sunken); border: 1px solid var(--border);
-  font-family: var(--mono); font-size: 12px; color: var(--muted); }
-
-/* table */
-.table-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden;
-  box-shadow: var(--shadow); }
-.scroll { overflow-x: auto; }
-table { width: 100%; border-collapse: collapse; }
-th { text-align: left; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em;
-  padding: 11px 14px; background: var(--sunken); border-bottom: 1px solid var(--border); white-space: nowrap; }
-td { padding: 12px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
-tr:last-child td { border-bottom: 0; }
-tbody tr:hover td { background: var(--accent-soft); }
-td a.title { color: var(--text); font-weight: 500; }
-td a.title:hover { color: var(--accent); text-decoration: none; }
-td.num { font-variant-numeric: tabular-nums; font-weight: 600; }
-td .where { display: block; margin-top: 2px; color: var(--muted); font-family: var(--mono); font-size: 12px; word-break: break-all; }
-.empty { padding: 28px; text-align: center; color: var(--muted); }
-
-/* issue cards */
-.issue { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 22px 24px;
-  margin-bottom: 16px; box-shadow: var(--shadow); scroll-margin-top: 16px; }
-.issue:target { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-.issue-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
-.issue-head h3 { flex: 1 1 100%; margin-top: 6px; }
-.rank { font-family: var(--mono); font-size: 12px; color: var(--muted); }
-.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin: 18px 0 4px; }
-.fact { background: var(--sunken); border-radius: 10px; padding: 10px 12px; min-width: 0; }
-.fact .k { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
-.fact .v { font-weight: 600; margin-top: 2px; word-break: break-word; }
-.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px; margin-top: 18px; }
-.panel { min-width: 0; }
-.section-title { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .07em;
-  margin: 22px 0 8px; }
-.cols .section-title { margin-top: 18px; }
-.cols .panel > .section-title:first-child { margin-top: 0; }
-dl.kv { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; margin: 0; }
-dl.kv dt { color: var(--muted); font-size: 13px; }
-dl.kv dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
-dl.kv dd.mono { word-break: break-all; }
-pre { margin: 0; padding: 12px 14px; background: var(--sunken); border: 1px solid var(--border); border-radius: 10px;
-  overflow-x: auto; line-height: 1.5; white-space: pre; }
-pre.wrap-text { white-space: pre-wrap; word-break: break-all; }
-pre.code { padding: 10px 0; }
-pre.code .line { display: block; padding: 0 14px 0 0; }
-pre.code .line.hot { background: var(--hot); box-shadow: inset 3px 0 0 var(--hot-edge); }
-pre.code .ln { display: inline-block; width: 3.2em; padding-right: 1em; text-align: right; color: var(--muted);
-  user-select: none; opacity: .75; }
-.chain { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; }
-.chain .arrow { color: var(--muted); }
-ul.reasons { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
-ul.reasons li { display: grid; grid-template-columns: 170px 1fr 92px; gap: 12px; align-items: center; }
-.weight { display: flex; align-items: center; gap: 8px; font-variant-numeric: tabular-nums; font-size: 12px; color: var(--muted); }
-.weight .bar { flex: 1; height: 6px; border-radius: 99px; background: var(--sunken); overflow: hidden; }
-.weight .bar span { display: block; height: 100%; background: var(--accent); border-radius: 99px; }
-.weight.neg .bar span { background: var(--s-critical); }
-.fix p { margin: 0 0 10px; }
-.fix pre { margin: 0 0 12px; }
-details.raw { margin-top: 12px; }
-details > summary { cursor: pointer; color: var(--muted); font-size: 13px; font-weight: 500; }
-details > summary:hover { color: var(--text); }
-details.raw[open] > summary { margin-bottom: 8px; }
-.raw-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
-ul.others { margin: 0; padding-left: 18px; font-size: 13px; }
-.top-link { display: inline-block; margin-top: 16px; font-size: 13px; color: var(--muted); }
-details.suppressed { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
-  box-shadow: var(--shadow); }
-details.suppressed > summary { padding: 16px 20px; font-size: 15px; font-weight: 600; color: var(--text); list-style-position: inside; }
-details.suppressed[open] > summary { border-bottom: 1px solid var(--border); }
-footer { margin-top: 48px; color: var(--muted); font-size: 13px; text-align: center; }
-@media (max-width: 640px) {
-  .wrap { padding: 24px 14px 48px; }
-  ul.reasons li { grid-template-columns: 1fr; gap: 4px; }
-  .issue { padding: 18px 16px; }
-}
-@media print {
-  body { background: #fff; }
-  .issue, .stat, .table-card, details.suppressed { box-shadow: none; break-inside: avoid; }
-  .top-link { display: none; }
+{% include "_styles.css" %}
+/* ------------------------------------------------------------------ CSS-only tabs (B-27) */
+@supports selector(:has(*)) {
+  .panel { display: none; }
+  .panel:target, .panel:has(:target) { display: block; }
+  main:not(:has(:target)) #tab-overview { display: block; }
+  #tab-issues .issue { display: none; }
+  #tab-issues .issue:target { display: block; }
+  #tab-issues .detail:not(:has(.issue:target)) .issue:first-child { display: block; }
+  body:not(:has(main :target)) .tabs a[href="#tab-overview"],
+{% for key, _ in tabs %}
+  body:has(#tab-{{ key }}:target, #tab-{{ key }} :target) .tabs a[href="#tab-{{ key }}"]{{ "," if not loop.last else "" }}
+{% endfor %}
+  { color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 -2px 0 var(--accent); }
+{% if reported %}
+  .md:not(:has(.issue:target)) .ilist li:first-child a,
+{% for v in reported %}
+  .md:has(#{{ v.anchor }}:target) .ilist a[href="#{{ v.anchor }}"]{{ "," if not loop.last else "" }}
+{% endfor %}
+  { background: var(--accent-soft); border-color: var(--accent); }
+{% endif %}
 }
 </style>
 </head>
 <body>
-<div class="wrap" id="top">
-
-<header>
-  <div class="brand"><span class="logo" aria-hidden="true"></span>FlowStopper</div>
-  <h1>Security report</h1>
-  <dl class="meta">
-    <div><dt>Target</dt><dd>{{ meta.get("target") or "unknown" }}</dd></div>
-    {% if meta.get("source") %}<div><dt>Source</dt><dd>{{ meta.get("source") }}</dd></div>{% endif %}
-    {% if meta.get("started_at") %}<div><dt>Scanned</dt><dd>{{ meta.get("started_at") }}</dd></div>{% endif %}
-    {% if duration %}<div><dt>Duration</dt><dd>{{ duration }}</dd></div>{% endif %}
-    {% if meta.get("scan_id") %}<div><dt>Scan</dt><dd class="mono">{{ meta.get("scan_id") }}</dd></div>{% endif %}
-  </dl>
-  {% if meta.get("truncated") %}
-  <div class="banner">The DAST time budget was reached, so some runtime checks did not run. Results may be incomplete.</div>
-  {% endif %}
+{% include "_icons.html" %}
+<header class="topbar">
+  <div class="wrap">
+    <div class="brand">
+      <span class="wordmark">FlowStopper</span>
+      <h1>Security report <span class="target">{{ meta.get("target") or "unknown target" }}</span></h1>
+    </div>
+    <nav class="tabs" aria-label="Report sections">
+      <ul>
+      {% for key, name in tabs %}
+        <li><a href="#tab-{{ key }}">{{ name }}{% if key == "issues" %} <span class="count">{{ total }}</span>{% elif key == "suppressed" %} <span class="count">{{ suppressed|length }}</span>{% endif %}</a></li>
+      {% endfor %}
+      </ul>
+    </nav>
+  </div>
 </header>
 
-<section class="stats" aria-label="Summary">
-  <div class="stat"><div class="n">{{ total }}</div><div class="k">Reported issues</div></div>
-  <div class="stat"><div class="n">{{ counts["confirmed"] }}</div><div class="k"><span class="dot confirmed"></span>Confirmed</div></div>
-  <div class="stat"><div class="n">{{ counts["code_only"] }}</div><div class="k"><span class="dot code_only"></span>Code only</div></div>
-  <div class="stat"><div class="n">{{ counts["runtime_only"] }}</div><div class="k"><span class="dot runtime_only"></span>Runtime only</div></div>
-  <div class="stat"><div class="n">{{ suppressed|length }}</div><div class="k"><span class="dot"></span>Suppressed</div></div>
-</section>
-{% if total %}
-<div class="sevbar" role="img" aria-label="Severity distribution">
-  {% for sev, n in severities.items() if n %}<span class="{{ sev }}" style="width: {{ '%.2f'|format(n * 100 / total) }}%"></span>{% endfor %}
-</div>
-<div class="legend">
-  {% for sev, n in severities.items() %}<span><span class="dot {{ sev }}"></span>{{ sev|capitalize }} {{ n }}</span>{% endfor %}
-</div>
-{% endif %}
-
-<h2>Prioritised issues</h2>
-<div class="table-card"><div class="scroll">
-{% if reported %}
-<table>
-  <thead><tr><th>#</th><th>Label</th><th>Severity</th><th>Risk</th><th>CWE</th><th>Issue</th></tr></thead>
-  <tbody>
-  {% for v in reported %}
-    <tr>
-      <td class="muted">{{ v.rank }}</td>
-      <td><span class="pill {{ v.issue.label.value }}">{{ v.label_text }}</span></td>
-      <td><span class="sev"><span class="dot {{ v.issue.severity.value }}"></span>{{ v.issue.severity.value }}</span></td>
-      <td class="num">{{ '%.1f'|format(v.issue.risk) }}</td>
-      <td><a href="{{ v.cwe_url }}" rel="noreferrer noopener" target="_blank">CWE-{{ v.issue.cwe }}</a></td>
-      <td><a class="title" href="#{{ v.anchor }}">{{ v.issue.title }}</a>{% if v.where %}<span class="where">{{ v.where }}</span>{% endif %}</td>
-    </tr>
-  {% endfor %}
-  </tbody>
-</table>
-{% else %}
-<div class="empty">No reported issues.</div>
-{% endif %}
-</div></div>
-
-{% if reported %}
-<h2>Issue details</h2>
-{% for v in reported %}
-{% set i = v.issue %}
-<article class="issue" id="{{ v.anchor }}">
-  <div class="issue-head">
-    <span class="rank">#{{ v.rank }}</span>
-    <span class="pill {{ i.label.value }}">{{ v.label_text }}</span>
-    <span class="sev"><span class="dot {{ i.severity.value }}"></span>{{ i.severity.value }}</span>
-    <span class="tag">{{ i.id }}</span>
-    <h3>{{ i.title }}</h3>
-  </div>
-
-  <div class="facts">
-    <div class="fact"><div class="k">Risk</div><div class="v">{{ '%.1f'|format(i.risk) }} / 10</div></div>
-    <div class="fact"><div class="k">CVSS 3.1</div><div class="v">{{ '%.1f'|format(i.cvss) }}</div></div>
-    <div class="fact"><div class="k">Weakness</div><div class="v"><a href="{{ v.cwe_url }}" rel="noreferrer noopener" target="_blank">CWE-{{ i.cwe }}</a> <span class="muted small">{{ v.cwe_name }}</span></div></div>
-    {% if v.owasp %}<div class="fact"><div class="k">OWASP Top 10</div><div class="v"><a href="{{ owasp_url }}" rel="noreferrer noopener" target="_blank">{{ v.owasp }}</a></div></div>{% endif %}
-    {% if i.link_score is not none %}<div class="fact"><div class="k">Link score</div><div class="v">{{ '%.2f'|format(i.link_score) }}</div></div>{% endif %}
-    {% if i.verified_by %}<div class="fact"><div class="k">Verified by</div><div class="v">{{ i.verified_by }}</div></div>{% endif %}
-  </div>
-
-  {% if v.runtime or v.code %}
-  <div class="cols">
-    {% if v.runtime %}{% set rt = v.runtime %}
-    <div class="panel">
-      <div class="section-title">Runtime proof</div>
-      <dl class="kv">
-        <dt>Request</dt><dd class="mono">{{ rt.method }} {{ rt.url }}</dd>
-        {% if rt.param %}<dt>Parameter</dt><dd><code>{{ rt.param }}</code>{% if rt.param_location %} <span class="muted small">in {{ rt.param_location.value }}</span>{% endif %}</dd>{% endif %}
-        {% if rt.payload %}<dt>Payload</dt><dd><code>{{ rt.payload }}</code></dd>{% endif %}
-        <dt>Proof</dt><dd><span class="tag">{{ rt.proof }}</span></dd>
-        {% if rt.evidence %}<dt>Evidence</dt><dd>{{ rt.evidence }}</dd>{% endif %}
-      </dl>
-      {% if rt.repro_curl %}
-      <div class="section-title">Reproduce</div>
-      <pre class="wrap-text">{{ rt.repro_curl }}</pre>
-      {% endif %}
-      {% if rt.request or rt.response_excerpt %}
-      <details class="raw"><summary>Raw request and response</summary>
-        <div class="raw-grid">
-          {% if rt.request %}<pre class="wrap-text">{{ rt.request }}</pre>{% endif %}
-          {% if rt.response_excerpt %}<pre class="wrap-text">{{ rt.response_excerpt }}</pre>{% endif %}
-        </div>
-      </details>
-      {% endif %}
-    </div>
-    {% endif %}
-    {% if v.code %}{% set c = v.code %}
-    <div class="panel">
-      <div class="section-title">Code location</div>
-      <dl class="kv">
-        <dt>File</dt><dd class="mono">{{ c.file }}:{{ c.line_start }}{% if c.line_end != c.line_start %}-{{ c.line_end }}{% endif %}</dd>
-        {% if c.function %}<dt>Function</dt><dd class="mono">{{ c.function }}</dd>{% endif %}
-        {% if v.source_param %}<dt>Source</dt><dd><code>{{ v.source_param }}</code>{% if v.source %} <span class="muted small">read at {{ v.source.file }}:{{ v.source.line_start }}</span>{% endif %}</dd>{% endif %}
-      </dl>
-      {% if v.snippet %}
-      <div style="margin-top: 12px"><pre class="code"><code>{% for l in v.snippet %}<span class="line{% if l.hot %} hot{% endif %}"><span class="ln">{{ l.number }}</span>{{ l.text }}</span>{% endfor %}</code></pre></div>
-      {% endif %}
-      {% if v.call_chain %}
-      <div class="section-title">Call chain</div>
-      <div class="chain">{% for fn in v.call_chain %}{% if not loop.first %}<span class="arrow">&rarr;</span>{% endif %}<span class="tag">{{ fn }}</span>{% endfor %}</div>
-      {% endif %}
-    </div>
-    {% endif %}
-  </div>
-  {% endif %}
-
-  {% if i.reasons %}
-  <div class="section-title">{% if i.label.value == "confirmed" %}Why these were linked{% else %}Correlation notes{% endif %}</div>
-  <ul class="reasons">
-    {% for r in i.reasons %}
-    <li>
-      <span class="tag">{{ r.kind }}</span>
-      <span>{{ r.detail }}</span>
-      <span class="weight{% if r.weight < 0 %} neg{% endif %}"><span class="bar"><span style="width: {{ '%.0f'|format([r.weight|abs, 1.0]|min * 100) }}%"></span></span>{{ '%+.2f'|format(r.weight) }}</span>
-    </li>
-    {% endfor %}
-  </ul>
-  {% endif %}
-
-  {% if v.fix %}
-  <div class="section-title">How to fix</div>
-  <div class="fix">
-    {% for kind, text in v.fix %}{% if kind == "code" %}<pre>{{ text }}</pre>{% else %}<p>{{ text }}</p>{% endif %}
-    {% endfor %}
-  </div>
-  {% endif %}
-
-  {% if v.others %}
-  <div class="section-title">Also merged into this issue</div>
-  <ul class="others">
-    {% for o in v.others %}<li><span class="tag">{{ o.engine }}</span> <span class="mono">{{ o.rule_id }}</span> <span class="muted">{{ o.where }}</span></li>{% endfor %}
-  </ul>
-  {% endif %}
-  <a class="top-link" href="#top">&uarr; Back to top</a>
-</article>
-{% endfor %}
-{% endif %}
-
-<h2>Suppressed</h2>
-<details class="suppressed">
-  <summary>Suppressed (safe / unreachable) &middot; {{ suppressed|length }}</summary>
-  {% if suppressed %}
-  <div class="scroll">
-  <table>
-    <thead><tr><th>Issue</th><th>CWE</th><th>Why suppressed</th></tr></thead>
-    <tbody>
-    {% for v in suppressed %}
-      <tr>
-        <td>{{ v.issue.title }}{% if v.where %}<span class="where">{{ v.where }}</span>{% endif %}</td>
-        <td><a href="{{ v.cwe_url }}" rel="noreferrer noopener" target="_blank">CWE-{{ v.issue.cwe }}</a></td>
-        <td>{% for code, text in v.suppressions %}<div><span class="tag">{{ code }}</span> <span class="muted small">{{ text }}</span></div>{% else %}<span class="muted">no reason recorded</span>{% endfor %}</td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  </div>
-  {% else %}
-  <div class="empty">Nothing was suppressed.</div>
-  {% endif %}
-</details>
+<main>
+{% include "_overview.html" %}
+{% include "_issues.html" %}
+{% include "_evaluation.html" %}
+{% include "_method.html" %}
+{% include "_suppressed.html" %}
+</main>
 
 <footer>
-  Generated by FlowStopper{% if version %} {{ version }}{% endif %}. Self-contained page: no scripts or external assets; all scan data is HTML-escaped.
+  <div class="wrap">
+    {% if meta.get("scan_id") %}<p>Scan <span class="mono">{{ meta.get("scan_id") }}</span></p>{% endif %}
+    <p>Generated by FlowStopper{% if version %} {{ version }}{% endif %} (SAST + DAST correlation) from this scan's issues.json and scan_meta.json{% if ev.present %}, plus the evaluation JSON from FlowStopper eval{% endif %}.</p>
+    <p>Self-contained page: no scripts or external assets; all scan data is HTML-escaped.</p>
+  </div>
 </footer>
-</div>
 </body>
 </html>

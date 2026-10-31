@@ -12,6 +12,70 @@ prefix keeps our ids from ever colliding with Dev A's `A-` ids.
 > citation in `correlate/issues.py` is correct: D-12 is a *shared* Phase-0 decision and still lives in
 > [`DECISIONS.md`](DECISIONS.md).
 
+- **B-28 (evaluation data reaches the report, P6 `b/p6-html`):** `render_html(issues, meta=None, *,
+  eval_report=None)`; `eval_report` is the JSON `FlowStopper eval --out` writes. Keyword-only with a
+  default, so the three existing call sites (`pipeline.write_reports`, `api.py` `/scans/{id}/report`,
+  `report/commands.py`) keep working unchanged and render "Not evaluated: run FlowStopper eval", never
+  zeros. Rejected: looking for an eval file next to the issues file, because `render_html` is never
+  given that path (only `meta`), and adding it would change call sites. The renderer reads only
+  aggregate fields (`metrics.*` counts and rates, `run_time_s`, `app`, `source.scan_id`,
+  `evaluated_at`, `truncated`); the key path and anything else in the JSON are ignored, so no
+  answer-key contents can reach the page (test with planted-looking extra fields). "Unseen app" is
+  read from an optional `metrics.unseen_app` {found, total} and is otherwise "Not measured" (eval
+  does not produce it; it is the Correct-links rate of a held-out app's scan). **Not wired yet:** no
+  call site passes `eval_report`, so a scan's own `report.html` shows the Not-evaluated state. The
+  smallest wiring is in Dev B's own `report/commands.py` (outside this task's file list, so not done):
+  add `--eval PATH` to `FlowStopper report` and pass `eval_report=json.loads(...)`. No change to
+  `cli.py`, `pipeline.py` or `api.py` is needed for that; Dev A only has to act if the scan itself
+  or the API should embed eval results.
+- **B-27 (HTML report as a light, multi-tab page, P6 `b/p6-html`; supersedes the earlier single-page
+  restyle on this branch, never committed):** still server-rendered Jinja2 producing one static page
+  with inline CSS and inline SVG. **No JavaScript** (and no React/Vue/Tailwind/build step): a script
+  would break the no-script and R7 guarantees and the offline single file. Tabs are CSS-only and
+  hash-driven: five `<section class="panel" id="tab-...">` panels, a `<nav aria-label>` of plain
+  links, `.panel:target, .panel:has(:target)` shows a panel, `main:not(:has(:target)) #tab-overview`
+  is the default, and the active tab is styled with generated `body:has(#tab-x:target, #tab-x
+  :target)` rules. Deep links like `#issue-3` switch to the Issues tab and select that issue; the
+  first issue shows when none is targeted. Back button and bookmarks work because the state is the
+  URL. All hiding rules sit inside `@supports selector(:has(*))`, so a browser without `:has` stacks
+  every panel and nothing is lost; print shows every panel in order and hides the tab bar and issue
+  list. No `role="tab"`/`aria-selected` (they would be wrong without JS); the active tab is visible
+  text plus style. **Anchors are now `#issue-<rank>`** (matches findings.md and the requested
+  `#issue-3`); the stable 16-hex id is still printed on each card. Design: system font stacks only,
+  1.2 modular scale (13/14/16/19/23/28/34, hero 48), 4/8 px spacing tokens, 1200 px cap, prose 65ch,
+  white cards with hairline borders and layered low-opacity shadows, frosted sticky header with a
+  solid fallback, 180 ms ease-out transitions with a `prefers-reduced-motion` opt-out, one teal accent
+  for links, active tab, focus rings and primary hovers; neutrals tinted toward it; severity and
+  evaluation-status colours are separate and always paired with a word. Icons: a 9-symbol inline SVG
+  sprite drawn for this report (own simple geometric paths, no Heroicons/Lucide data, so nothing to
+  add to THIRD_PARTY.md). Prototyped by rendering the draft templates with real Mock A data to
+  git-ignored `out/proto/` (screenshots via headless Chrome), then kept. Schema tab fields and types
+  are read from the pydantic models (`FIELD_MEANINGS` must cover every field, enforced by a test);
+  correlation and risk numbers are read from `CorrelateConfig`; PRD targets are named constants in
+  `report/common.py`, pinned to `evalkit.metrics.TARGETS` by a test. Contrast (WCAG 2.x relative
+  luminance; AA text 4.5:1, UI borders and large text 3:1):
+
+  | Use | Foreground | Background(s) | Ratio(s) |
+  |---|---|---|---|
+  | Body text | `#1a2730` | `#ffffff` / canvas `#f4f7f7` / tint `#eef3f3` / code `#f3f6f6` / hot line `#fff6d6` | 15.25 / 14.16 / 13.62 / 14.04 / 14.09 |
+  | Muted text, keys, line numbers | `#4f5f66` | same five | 6.64 / 6.17 / 5.93 / 6.11 / 6.14 |
+  | Accent: links, active tab, Confirmed badge | `#0f766e` | `#ffffff` / `#f4f7f7` / `#eef3f3` / active `#e6f2f0` | 5.47 / 5.08 / 4.89 / 4.78 |
+  | Accent hover | `#115e59` | `#ffffff` / `#eef3f3` | 7.58 / 6.77 |
+  | Critical | `#b42318` | `#ffffff` / `#eef3f3` | 6.57 / 5.87 |
+  | High | `#b54708` | `#ffffff` / `#eef3f3` | 5.43 / 4.85 |
+  | Medium | `#8a6100` | `#ffffff` / `#eef3f3` | 5.54 / 4.95 |
+  | Low | `#3a5ba0` | `#ffffff` / `#eef3f3` | 6.60 / 5.89 |
+  | Info | `#5b6770` | `#ffffff` / `#eef3f3` | 5.80 / 5.18 |
+  | Status Great | `#1a7f37` | `#ffffff` / `#eef3f3` | 5.08 / 4.53 |
+  | Status Good | `#4d6b0f` | `#ffffff` / `#eef3f3` | 6.13 / 5.47 |
+  | Status Below Good | `#8a4b00` | `#ffffff` / `#eef3f3` | 6.80 / 6.07 |
+  | Status Not measured | `#4f5f66` | `#ffffff` / `#eef3f3` | 6.64 / 5.93 |
+  | Code/Runtime only badge border, eval ticks (UI) | `#6b7c80` | `#ffffff` | 4.36 |
+  | Highlighted code line edge (UI) | `#9a6700` | `#fff6d6` / `#ffffff` | 4.50 / 4.87 |
+  | Truncated-scan note | `#7a4a00` | `#fff6d6` | 6.91 |
+
+  The `#dde4e5` hairlines (1.29:1) and the light target zones on evaluation bars are decorative; the
+  meaning is carried by the ticks, the value text and the status word.
 - **B-26 (`report` CLI shape and exit codes, P5 step 5):** the old stub's `--scan/--format/--out` were
   replaced by the agreed `--issues/--meta/--html/--sarif/--md` (one run can write all three) plus
   `--fail-on`, so CI can gate on an issues file without rescanning. `--meta` is explicit (no sibling

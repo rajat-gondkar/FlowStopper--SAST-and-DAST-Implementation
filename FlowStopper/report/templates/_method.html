@@ -1,0 +1,97 @@
+{#- Schema and method tab (B-27). Field lists come from the pydantic models; numbers from CorrelateConfig. -#}
+{% from "_macros.html" import sev %}
+<section class="panel" id="tab-method" aria-labelledby="tab-method-title">
+  <div class="wrap">
+    <div class="panel-head">
+      <div>
+        <h2 id="tab-method-title">Schema and method</h2>
+        <p>How the findings are produced, how they are linked and scored, and the common format every finding uses.</p>
+      </div>
+    </div>
+
+    <div class="card pipeline">
+      <svg viewBox="0 0 960 204" role="img" aria-labelledby="pipeline-title">
+        <title id="pipeline-title">Pipeline: SAST and the route map feed DAST; both feed the correlator, which produces the issues.</title>
+        <text class="t2" x="105" y="22" text-anchor="middle">source code (parsed, never run)</text>
+        <text class="t2" x="355" y="22" text-anchor="middle">running app (in scope only)</text>
+        <path class="arrow" d="M105 30v18M99 42l6 6 6-6M355 30v18M349 42l6 6 6-6"/>
+        <rect class="box" x="10" y="54" width="190" height="92" rx="10"/>
+        <text class="t1" x="105" y="94" text-anchor="middle">SAST + route map</text>
+        <text class="t2" x="105" y="116" text-anchor="middle">taint flows, secrets, routes</text>
+        <rect class="box" x="260" y="54" width="190" height="92" rx="10"/>
+        <text class="t1" x="355" y="94" text-anchor="middle">DAST</text>
+        <text class="t2" x="355" y="116" text-anchor="middle">harmless probes per route</text>
+        <rect class="box" x="510" y="54" width="190" height="92" rx="10"/>
+        <text class="t1" x="605" y="94" text-anchor="middle">Correlate</text>
+        <text class="t2" x="605" y="116" text-anchor="middle">score and link pairs</text>
+        <rect class="box out" x="760" y="54" width="190" height="92" rx="10"/>
+        <text class="t1" x="855" y="94" text-anchor="middle">Issues</text>
+        <text class="t2" x="855" y="114" text-anchor="middle">Confirmed, Code only,</text>
+        <text class="t2" x="855" y="130" text-anchor="middle">Runtime only</text>
+        <path class="arrow" d="M204 100h50M248 94l6 6-6 6M454 100h50M498 94l6 6-6 6M704 100h50M748 94l6 6-6 6"/>
+        <path class="arrow" d="M105 150c0 40 500 40 500 0M599 156l6-6 6 6"/>
+        <text class="t2" x="355" y="198" text-anchor="middle">code findings</text>
+        <text class="t2" x="229" y="88" text-anchor="middle">routes</text>
+        <text class="t2" x="479" y="88" text-anchor="middle">runtime</text>
+      </svg>
+    </div>
+
+    <div class="section">
+      <h3>Labels</h3>
+      <div class="defs">
+        {% for text, value, definition in label_definitions %}
+        <div class="card"><span class="label label-{{ value }}">{{ text }}</span><p>{{ definition }}</p></div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="section">
+      <h3>Severity and risk</h3>
+      <div class="two">
+        <div class="card">
+          <h4>Severity (CVSS 3.1 base score of the CWE)</h4>
+          <ul class="bands">
+            {% for value, text, band in severity_bands %}<li>{{ sev(value, text) }}<span class="mono">{{ band }}</span></li>{% endfor %}
+          </ul>
+        </div>
+        <div class="card">
+          <h4>Risk score (0-10, used for ordering)</h4>
+          <ul class="plain">
+            {% for line in risk_rules %}<li>{{ line }}</li>{% endfor %}
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h3>Correlation rules</h3>
+      <p class="lede">How a code finding and a runtime finding become one Confirmed issue. The numbers are read from the correlator's configuration.</p>
+      <ol class="rules">
+        {% for title, text in rules %}
+        <li class="card"><h4>{{ title }}</h4><p>{{ text }}</p></li>
+        {% endfor %}
+      </ol>
+    </div>
+
+    <div class="section">
+      <h3>Common finding format</h3>
+      <p class="lede">Every SAST and DAST finding uses the same structure, and issues group them. Generated from the data models, so it always matches the JSON output.</p>
+      {% for name, fields in schema %}
+      <details class="card model"{% if loop.first %} open{% endif %}>
+        <summary>{{ name }} <span class="muted">&middot; {{ fields|length }} fields</span></summary>
+        <div class="table-wrap">
+          <table class="schema">
+            <caption>Fields of {{ name }}</caption>
+            <thead><tr><th scope="col">Field</th><th scope="col">Type</th><th scope="col">Meaning</th></tr></thead>
+            <tbody>
+            {% for f in fields %}
+              <tr><td class="f">{{ f.name }}</td><td class="ty">{{ f.type }}{% if f.required %}<span class="req">required</span>{% endif %}</td><td>{{ f.meaning }}</td></tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </details>
+      {% endfor %}
+    </div>
+  </div>
+</section>
