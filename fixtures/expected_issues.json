@@ -129,7 +129,7 @@
       }
     ],
     "verified_by": "dast",
-    "fix": null,
+    "fix": "What is wrong: services.store.find_items (services/store.py:9) puts the request parameter 'category' into an SQL statement instead of binding it as a parameter, so the input can change the query itself.\n\nMinimal fix:\n```python\n# bind the value as a parameter; never put it inside the SQL text\ncur.execute(\"SELECT * FROM table_name WHERE column_name = ?\", (category,))\n```\n\nPrevention: Use parameterised queries or an ORM everywhere, and never build SQL with f-strings, % or +.",
     "owasp_2025": "A05:2025 - Injection",
     "first_seen_scan": null,
     "last_seen_scan": null
@@ -259,7 +259,7 @@
       }
     ],
     "verified_by": "dast",
-    "fix": null,
+    "fix": "What is wrong: views.search.search_page (views/search.py:14) writes the request parameter 'q' into HTML without escaping, so a script in the input runs in the victim's browser.\n\nMinimal fix:\n```python\nfrom markupsafe import escape\nhtml = f\"<p>{escape(q)}</p>\"\n# better: render a template with autoescape on, and never apply |safe to user input\n```\n\nPrevention: Produce HTML only through autoescaping templates; never build markup from user input by string formatting.",
     "owasp_2025": "A05:2025 - Injection",
     "first_seen_scan": null,
     "last_seen_scan": null
@@ -328,7 +328,7 @@
       }
     ],
     "verified_by": null,
-    "fix": null,
+    "fix": "What is wrong: GET /api/report puts the request parameter 'start' into an SQL statement instead of binding it as a parameter, so the input can change the query itself.\n\nMinimal fix:\n```python\n# bind the value as a parameter; never put it inside the SQL text\ncur.execute(\"SELECT * FROM table_name WHERE column_name = ?\", (start,))\n```\n\nPrevention: Use parameterised queries or an ORM everywhere, and never build SQL with f-strings, % or +.",
     "owasp_2025": "A05:2025 - Injection",
     "first_seen_scan": null,
     "last_seen_scan": null
@@ -400,7 +400,7 @@
       }
     ],
     "verified_by": null,
-    "fix": null,
+    "fix": "What is wrong: views.reports.report (views/reports.py:12) puts request data into an SQL statement instead of binding it as a parameter, so the input can change the query itself.\n\nMinimal fix:\n```python\n# bind the value as a parameter; never put it inside the SQL text\ncur.execute(\"SELECT * FROM table_name WHERE column_name = ?\", (value,))\n```\n\nPrevention: Use parameterised queries or an ORM everywhere, and never build SQL with f-strings, % or +.",
     "owasp_2025": "A05:2025 - Injection",
     "first_seen_scan": null,
     "last_seen_scan": null
@@ -472,7 +472,7 @@
       }
     ],
     "verified_by": null,
-    "fix": null,
+    "fix": "What is wrong: views.reports.report (views/reports.py:20) puts request data into an SQL statement instead of binding it as a parameter, so the input can change the query itself.\n\nMinimal fix:\n```python\n# bind the value as a parameter; never put it inside the SQL text\ncur.execute(\"SELECT * FROM table_name WHERE column_name = ?\", (value,))\n```\n\nPrevention: Use parameterised queries or an ORM everywhere, and never build SQL with f-strings, % or +.",
     "owasp_2025": "A05:2025 - Injection",
     "first_seen_scan": null,
     "last_seen_scan": null
@@ -521,7 +521,7 @@
     "link_score": null,
     "reasons": [],
     "verified_by": null,
-    "fix": null,
+    "fix": "What is wrong: settings.py contains a hard-coded credential (SECRET_KEY), so anyone who can read the source can use it.\n\nMinimal fix:\n```python\nimport os\nSECRET_KEY = os.environ[\"SECRET_KEY\"]  # set it in the environment or a secret manager\n```\n\nPrevention: Keep secrets out of source control, rotate the exposed value now, and run a secret scanner in CI.",
     "owasp_2025": "A07:2025 - Authentication Failures",
     "first_seen_scan": null,
     "last_seen_scan": null
@@ -592,7 +592,7 @@
     "link_score": null,
     "reasons": [],
     "verified_by": null,
-    "fix": null,
+    "fix": "What is wrong: Responses miss a browser security header (Missing Content-Security-Policy header), so the browser does not apply that protection.\n\nMinimal fix:\n```python\n@app.after_request\ndef add_security_headers(resp):\n    resp.headers.setdefault(\"X-Content-Type-Options\", \"nosniff\")\n    resp.headers.setdefault(\"Content-Security-Policy\", \"default-src 'self'\")\n    resp.headers.setdefault(\"Referrer-Policy\", \"strict-origin-when-cross-origin\")\n    return resp\n```\n\nPrevention: Set security headers once, in middleware or the reverse proxy, so every response gets them.",
     "owasp_2025": "A02:2025 - Security Misconfiguration",
     "first_seen_scan": null,
     "last_seen_scan": null
@@ -658,7 +658,7 @@
     "link_score": null,
     "reasons": [],
     "verified_by": null,
-    "fix": null,
+    "fix": "What is wrong: views.search.search_page (views/search.py:24) writes the request parameter 'sort' into HTML without escaping, so a script in the input runs in the victim's browser.\n\nMinimal fix:\n```python\nfrom markupsafe import escape\nhtml = f\"<p>{escape(sort)}</p>\"\n# better: render a template with autoescape on, and never apply |safe to user input\n```\n\nPrevention: Produce HTML only through autoescaping templates; never build markup from user input by string formatting.",
     "owasp_2025": "A05:2025 - Injection",
     "first_seen_scan": null,
     "last_seen_scan": null
@@ -719,7 +719,7 @@
     "link_score": null,
     "reasons": [],
     "verified_by": null,
-    "fix": null,
+    "fix": "What is wrong: services.net.ping_host (services/net.py:21) passes the request parameter 'host' to a shell, so characters such as ; | or $( ) run extra commands.\n\nMinimal fix:\n```python\nimport subprocess\n# argument list, no shell: the value is one argument, never parsed by a shell\nsubprocess.run([\"program\", \"--option\", host], shell=False, check=True, timeout=10)\n# if a shell string is unavoidable: shlex.quote(value)\n```\n\nPrevention: Call programs with an argument list and shell=False, and check the value against an allow-list (for example a strict regex) first.",
     "owasp_2025": "A05:2025 - Injection",
     "first_seen_scan": null,
     "last_seen_scan": null

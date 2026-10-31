@@ -42,6 +42,7 @@ from FlowStopper.models import (  # noqa: E402
     Severity,
     TaintInfo,
 )
+from FlowStopper.report.fixes import fix_for  # noqa: E402
 
 FIXTURES = ROOT / "fixtures"
 BASE = "http://127.0.0.1:8080"
@@ -574,7 +575,10 @@ def expected_issues(s: dict[str, Finding], d: dict[str, Finding]) -> list[Issue]
     i_decoy = code_issue(s["cmdi_decoy"], "OS Command Injection in services.net.ping_host (suppressed)", 9.8, 5.88, inj)
 
     # Order: confirmed first, then risk desc, severity, CWE, id; suppressed issues last (DECISIONS D-12).
-    return [i_sqli, i_xss, i_report_rt, *report_code, i_secret, i_csp, i_xss_sort, i_decoy]
+    ordered = [i_sqli, i_xss, i_report_rt, *report_code, i_secret, i_csp, i_xss_sort, i_decoy]
+    # Every issue carries its templated fix suggestion (B-4; DECISIONS_Dev2 B-25). The text is
+    # presentation, pinned by tests/test_report_fixes.py, not hand-written here.
+    return [i.model_copy(update={"fix": fix_for(i)}) for i in ordered]
 
 
 # --------------------------------------------------------------------------- key + metrics

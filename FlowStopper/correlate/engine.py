@@ -26,6 +26,7 @@ from FlowStopper.correlate.issues import (
 from FlowStopper.correlate.matcher import Candidate, generate_candidates
 from FlowStopper.correlate.scoring import link_score, risk_score
 from FlowStopper.models import Finding, Issue, Label, LinkReason, Route
+from FlowStopper.report.fixes import fix_for
 
 
 def _catalogue(cwe: int) -> tuple[float, object, Optional[str]]:
@@ -58,13 +59,18 @@ def _route_for_code(code: Finding, routes_by_id: dict[str, Route]) -> Optional[R
     return None
 
 
+def with_fix(issue: Issue) -> Issue:
+    """The issue with its plain-English fix suggestion filled in (B-4, P5-B3, DECISIONS_Dev2 B-25)."""
+    return issue.model_copy(update={"fix": fix_for(issue)})
+
+
 def confirmed_issue(cand: Candidate, config: CorrelateConfig) -> Issue:
     """The Confirmed issue for one accepted link (also used by auto-verify, P4-B4)."""
     code, runtime = cand.code, cand.runtime
     assert code.code is not None and runtime.runtime is not None
     cvss, severity, owasp = _catalogue(code.cwe)
     reasons = link_reasons(cand, config)
-    return Issue(
+    issue = Issue(
         id=ids.code_issue_id(code.cwe, code.code.file, code.code.function, code.code.line_start),
         cwe=code.cwe,
         title=code_issue_title(code),
@@ -87,6 +93,7 @@ def confirmed_issue(cand: Candidate, config: CorrelateConfig) -> Issue:
         verified_by="dast",
         owasp_2025=owasp,
     )
+    return with_fix(issue)
 
 
 _confirmed_issue = confirmed_issue  # backwards-compatible alias
@@ -98,7 +105,7 @@ def _code_only_issue(
     assert code.code is not None
     cvss, severity, owasp = _catalogue(code.cwe)
     route = _route_for_code(code, routes_by_id)
-    return Issue(
+    issue = Issue(
         id=ids.code_issue_id(code.cwe, code.code.file, code.code.function, code.code.line_start),
         cwe=code.cwe,
         title=code_issue_title(code),
@@ -111,6 +118,7 @@ def _code_only_issue(
         reasons=[penalty] if penalty else [],
         owasp_2025=owasp,
     )
+    return with_fix(issue)
 
 
 def _runtime_only_issue(
@@ -127,7 +135,7 @@ def _runtime_only_issue(
     key = rt.route_id or host
     if not key:
         key = rt.path  # last resort: a finding with neither route nor host still needs a stable id
-    return Issue(
+    issue = Issue(
         id=ids.runtime_issue_id(runtime.cwe, key, rt.param),
         cwe=runtime.cwe,
         title=runtime_issue_title(runtime),
@@ -146,6 +154,7 @@ def _runtime_only_issue(
         reasons=[penalty] if penalty else [],
         owasp_2025=owasp,
     )
+    return with_fix(issue)
 
 
 def correlate(
