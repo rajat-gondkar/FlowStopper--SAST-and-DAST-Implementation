@@ -45,6 +45,13 @@ the freeze without an explicit joint decision recorded here.
      **generic over any Appendix-C key** (no app-specific logic). The bench key uses only existing
      schema fields.
 - Impact on fixtures/schemas: none.
-- ACK by Dev B: ____  (pending)
+- ACK by Dev B: **ACKed — Dev B, 2026-10-31.** Confirmed, no frozen-contract change. (1) Scope is
+  honoured via config only: `scope.py` reads the allow-list from `ALLOWED_HOSTS` (parsed in
+  `config.py`, default `localhost,127.0.0.1,::1`) and `build_guard()` merges `--allow-host` extras,
+  so `make bench`'s `ALLOWED_HOSTS=…,flaskapp` allow-lists the benchmark host with **no bench host
+  hardcoded in `FlowStopper/`** (R6; `tests/test_no_overfit.py` passes). `DastConfig.allowed_hosts`
+  already covers it — no new field. (2) `evalkit/metrics.py` will implement the generic Appendix-C
+  matching rules only (no app-specific logic); the bench key uses existing schema fields. Delivered
+  as part of P0-B1.
 
 _(Contracts not yet frozen; once `contract-v1` is tagged, add further entries above.)_
