@@ -353,7 +353,15 @@ endpoints, 508 requests.
   --target` takes `--allow-host` / `--allow-mutating`). This file's emoji and dashes, which had been
   mis-decoded earlier (`Γ£à`, `ΓÇö`), were restored (43 lines, encoding only).
 
-## Phase 5 — delivery surface ⬜  ·  ## Phase 6 — generalisation ⬜  ·  ## Phase 7 — release ⬜
+## Phase 5 — delivery surface 🚧 (Dev B, branch `b/p5`)
+- Step 0 (interface for Dev A) done: `report/gate.py` complete (`GATE_EXIT_CODE = 2`,
+  `parse_fail_on`, `gate_tripped`, suppressed issues never trip, B-21); minimal working
+  `render_html` (Jinja2, autoescape on, `report/templates/report.html`), `to_sarif` (2.1.0 skeleton:
+  one run, rule per CWE, result per reported issue) and `render_markdown`, all `(issues, meta=None)`.
+  Names and signatures are frozen for Dev A's `api.py` / `pipeline.py`. 28 tests
+  (`tests/test_report_gate.py`, `tests/test_report_api.py`); `make check` 564 passed, 1 skipped.
+
+## Phase 6 — generalisation ⬜  ·  ## Phase 7 — release ⬜
 
 ## Third-party benchmark (we45 Vulnerable-Flask-App) — cross-phase
 

@@ -12,6 +12,14 @@ prefix keeps our ids from ever colliding with Dev A's `A-` ids.
 > citation in `correlate/issues.py` is correct: D-12 is a *shared* Phase-0 decision and still lives in
 > [`DECISIONS.md`](DECISIONS.md).
 
+- **B-21 (CI gate semantics, P5-B2 / B-6):** `--fail-on` is `<label>:<severity>` with label in
+  `confirmed | code_only | runtime_only | any` and a `Severity` value, case-insensitive, surrounding
+  whitespace ignored; anything else (including the hyphenated `code-only`) is a `ValueError`, so a typo
+  fails loudly instead of silently disabling the gate. The threshold is inclusive (`confirmed:high`
+  trips on high and critical). Suppressed issues (`correlate.issues.is_suppressed`) never trip it,
+  matching "reported issues" everywhere else. Exit code `GATE_EXIT_CODE = 2`. Interface for Dev A:
+  `report/gate.py::parse_fail_on`, `gate_tripped`; report entry points `render_html`, `to_sarif`,
+  `render_markdown`, all `(issues, meta=None)`, are not to be renamed.
 - **B-20 (`correlate --target` scope options match `dast`):** `correlate --target` now takes
   `--allow-host` and `--allow-mutating` and passes them into the auto-verify `DastConfig`, so
   auto-verify allows exactly what the `dast` run allowed. Test:
