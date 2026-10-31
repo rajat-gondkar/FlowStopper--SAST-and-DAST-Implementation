@@ -1,0 +1,31 @@
+# FlowStopper compose (Phase 0 skeleton; extended in P5-A3).
+#
+# Scan the organisers' app:
+#   TARGET_SRC=./target_src TARGET_NETWORK=<their_net> ALLOWED_HOSTS="localhost,127.0.0.1,<service>" \
+#   docker compose run --rm flowstopper scan --source /src --target http://<service>:<port> --out /app/out
+#
+# target_src/ is mounted READ-ONLY (SAST parses, never writes — R7) and is git-ignored (R5).
+
+services:
+  flowstopper:
+    build: .
+    image: flowstopper:dev
+    environment:
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1,::1}
+    volumes:
+      - ${TARGET_SRC:-./target_src}:/src:ro
+      - ./out:/app/out
+    # Join the target app's compose network so DAST can reach it by service name.
+    # networks: [default, target]
+    # The API (FlowStopper serve) is the long-running entry; `run --rm flowstopper <cmd>` for one-offs.
+    command: ["serve", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "127.0.0.1:8000:8000"
+
+# Mock A (our own fixture) has its own compose file: apps/mock_a/docker-compose.yml (Phase 1).
+# `make demo` will start Mock A and scan it end-to-end with no dependency on the organisers' app.
+
+# networks:
+#   target:
+#     name: ${TARGET_NETWORK:-}
+#     external: true

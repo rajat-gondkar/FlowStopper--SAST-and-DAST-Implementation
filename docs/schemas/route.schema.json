@@ -1,0 +1,105 @@
+{
+  "$defs": {
+    "ParamLocation": {
+      "enum": [
+        "query",
+        "form",
+        "json",
+        "path",
+        "header",
+        "cookie"
+      ],
+      "title": "ParamLocation",
+      "type": "string"
+    },
+    "RouteParam": {
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "location": {
+          "$ref": "#/$defs/ParamLocation"
+        },
+        "required": {
+          "default": false,
+          "title": "Required",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "location"
+      ],
+      "title": "RouteParam",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "method": {
+      "title": "Method",
+      "type": "string"
+    },
+    "path_template": {
+      "title": "Path Template",
+      "type": "string"
+    },
+    "path_regex": {
+      "title": "Path Regex",
+      "type": "string"
+    },
+    "handler": {
+      "title": "Handler",
+      "type": "string"
+    },
+    "file": {
+      "title": "File",
+      "type": "string"
+    },
+    "line_start": {
+      "title": "Line Start",
+      "type": "integer"
+    },
+    "line_end": {
+      "title": "Line End",
+      "type": "integer"
+    },
+    "params": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/RouteParam"
+      },
+      "title": "Params",
+      "type": "array"
+    },
+    "auth_required": {
+      "default": false,
+      "title": "Auth Required",
+      "type": "boolean"
+    },
+    "reachable_functions": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Reachable Functions",
+      "type": "array"
+    }
+  },
+  "required": [
+    "id",
+    "method",
+    "path_template",
+    "path_regex",
+    "handler",
+    "file",
+    "line_start",
+    "line_end"
+  ],
+  "title": "Route",
+  "type": "object"
+}

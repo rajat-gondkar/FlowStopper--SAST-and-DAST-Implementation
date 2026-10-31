@@ -1,0 +1,113 @@
+[
+  {
+    "id": "GET /api/items",
+    "method": "GET",
+    "path_template": "/api/items",
+    "path_regex": "^/api/items/?$",
+    "handler": "views.catalog.list_items",
+    "file": "views/catalog.py",
+    "line_start": 10,
+    "line_end": 16,
+    "params": [
+      {
+        "name": "category",
+        "location": "query",
+        "required": false
+      }
+    ],
+    "auth_required": false,
+    "reachable_functions": [
+      "services.store.find_items"
+    ]
+  },
+  {
+    "id": "GET /api/items/<int:item_id>",
+    "method": "GET",
+    "path_template": "/api/items/<int:item_id>",
+    "path_regex": "^/api/items/(?P<item_id>[^/]+)/?$",
+    "handler": "views.catalog.get_item",
+    "file": "views/catalog.py",
+    "line_start": 19,
+    "line_end": 23,
+    "params": [
+      {
+        "name": "item_id",
+        "location": "path",
+        "required": true
+      }
+    ],
+    "auth_required": false,
+    "reachable_functions": [
+      "services.store.get_item"
+    ]
+  },
+  {
+    "id": "GET /search",
+    "method": "GET",
+    "path_template": "/search",
+    "path_regex": "^/search/?$",
+    "handler": "views.search.search_page",
+    "file": "views/search.py",
+    "line_start": 8,
+    "line_end": 26,
+    "params": [
+      {
+        "name": "q",
+        "location": "query",
+        "required": false
+      },
+      {
+        "name": "sort",
+        "location": "query",
+        "required": false
+      }
+    ],
+    "auth_required": false,
+    "reachable_functions": []
+  },
+  {
+    "id": "GET /api/report",
+    "method": "GET",
+    "path_template": "/api/report",
+    "path_regex": "^/api/report/?$",
+    "handler": "views.reports.report",
+    "file": "views/reports.py",
+    "line_start": 6,
+    "line_end": 24,
+    "params": [
+      {
+        "name": "start",
+        "location": "query",
+        "required": false
+      },
+      {
+        "name": "end",
+        "location": "query",
+        "required": false
+      }
+    ],
+    "auth_required": false,
+    "reachable_functions": []
+  },
+  {
+    "id": "GET /api/ping",
+    "method": "GET",
+    "path_template": "/api/ping",
+    "path_regex": "^/api/ping/?$",
+    "handler": "views.net.ping",
+    "file": "views/net.py",
+    "line_start": 5,
+    "line_end": 12,
+    "params": [
+      {
+        "name": "host",
+        "location": "query",
+        "required": true
+      }
+    ],
+    "auth_required": false,
+    "reachable_functions": [
+      "services.net.ping_host"
+    ]
+  }
+]

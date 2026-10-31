@@ -1,0 +1,5 @@
+# Normalise line endings so Windows/WSL/macOS checkouts produce identical files and IDs.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.ico binary

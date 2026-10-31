@@ -1,0 +1,122 @@
+{
+  "schema_version": "1",
+  "app": "fixture-shop",
+  "language": "python",
+  "framework": "flask",
+  "base_url": "http://127.0.0.1:8080",
+  "vulns": [
+    {
+      "id": "F01",
+      "cwe": 89,
+      "kind": "pair",
+      "title": "SQLi in item listing, SQL built in a helper in another file",
+      "code": {
+        "file": "services/store.py",
+        "line_start": 9,
+        "line_end": 9,
+        "function": "services.store.find_items"
+      },
+      "runtime": {
+        "method": "GET",
+        "path": "/api/items",
+        "param": "category"
+      }
+    },
+    {
+      "id": "F02",
+      "cwe": 798,
+      "kind": "code_only",
+      "title": "Hard-coded SECRET_KEY",
+      "code": {
+        "file": "settings.py",
+        "line_start": 4,
+        "line_end": 4
+      }
+    },
+    {
+      "id": "F03",
+      "cwe": 693,
+      "kind": "runtime_only",
+      "title": "No Content-Security-Policy header",
+      "runtime": {
+        "method": "GET",
+        "path": "*",
+        "param": null
+      }
+    },
+    {
+      "id": "F04",
+      "cwe": 79,
+      "kind": "pair",
+      "title": "Reflected XSS via q",
+      "code": {
+        "file": "views/search.py",
+        "line_start": 14,
+        "line_end": 14
+      },
+      "runtime": {
+        "method": "GET",
+        "path": "/search",
+        "param": "q"
+      }
+    },
+    {
+      "id": "F05",
+      "cwe": 79,
+      "kind": "pair",
+      "title": "Reflected XSS via sort (same handler as F04)",
+      "code": {
+        "file": "views/search.py",
+        "line_start": 24,
+        "line_end": 24
+      },
+      "runtime": {
+        "method": "GET",
+        "path": "/search",
+        "param": "sort"
+      }
+    },
+    {
+      "id": "F06",
+      "cwe": 89,
+      "kind": "pair",
+      "title": "SQLi via start (param name not statically visible)",
+      "code": {
+        "file": "views/reports.py",
+        "line_start": 12,
+        "line_end": 12
+      },
+      "runtime": {
+        "method": "GET",
+        "path": "/api/report",
+        "param": "start"
+      }
+    },
+    {
+      "id": "F07",
+      "cwe": 89,
+      "kind": "pair",
+      "title": "SQLi via end (same handler as F06)",
+      "code": {
+        "file": "views/reports.py",
+        "line_start": 20,
+        "line_end": 20
+      },
+      "runtime": {
+        "method": "GET",
+        "path": "/api/report",
+        "param": "end"
+      }
+    }
+  ],
+  "decoys": [
+    {
+      "id": "D01",
+      "cwe": 78,
+      "file": "services/net.py",
+      "line_start": 20,
+      "line_end": 22,
+      "reason": "subprocess.run with a list argument and no shell=True"
+    }
+  ]
+}

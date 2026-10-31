@@ -1,0 +1,130 @@
+[
+  {
+    "id": "7e61fe8433412f1489b26a80955a9040a53e5e3e",
+    "engine": "dast",
+    "tool": "FlowStopper-dast",
+    "rule_id": "dast.sqli.error",
+    "cwe": 89,
+    "title": "SQL injection (error-based) in query parameter 'category'",
+    "severity": "critical",
+    "confidence": 0.9,
+    "code": null,
+    "runtime": {
+      "method": "GET",
+      "url": "http://127.0.0.1:8080/api/items?category=books%27",
+      "path": "/api/items",
+      "route_id": "GET /api/items",
+      "param": "category",
+      "param_location": "query",
+      "payload": "books'",
+      "proof": "error",
+      "request": "GET /api/items?category=books%27 HTTP/1.1\r\nHost: 127.0.0.1:8080\r\nUser-Agent: FlowStopper-dast\r\nAccept: */*\r\n\r\n",
+      "response_excerpt": "HTTP/1.1 500 INTERNAL SERVER ERROR\r\nContent-Type: text/html; charset=utf-8\r\n\r\n...sqlite3.OperationalError: unrecognized token: \"'books''\"...",
+      "evidence": "Appending a quote to 'category' produced 'sqlite3.OperationalError: unrecognized token'; the baseline response has no SQL error.",
+      "repro_curl": "curl -i 'http://127.0.0.1:8080/api/items?category=books%27'"
+    },
+    "taint": null,
+    "suppressed": false,
+    "suppress_reason": null,
+    "raw": {
+      "other_payloads": [
+        "books\""
+      ]
+    }
+  },
+  {
+    "id": "145174bcfbd4197ccb972242c87ce3b3bd3c31ac",
+    "engine": "dast",
+    "tool": "FlowStopper-dast",
+    "rule_id": "dast.xss.reflected",
+    "cwe": 79,
+    "title": "Reflected XSS in query parameter 'q'",
+    "severity": "medium",
+    "confidence": 0.9,
+    "code": null,
+    "runtime": {
+      "method": "GET",
+      "url": "http://127.0.0.1:8080/search?q=sdcqkzmwa%3C%22%27%3E",
+      "path": "/search",
+      "route_id": "GET /search",
+      "param": "q",
+      "param_location": "query",
+      "payload": "sdcqkzmwa<\"'>",
+      "proof": "echo",
+      "request": "GET /search?q=sdcqkzmwa%3C%22%27%3E HTTP/1.1\r\nHost: 127.0.0.1:8080\r\nUser-Agent: FlowStopper-dast\r\nAccept: */*\r\n\r\n",
+      "response_excerpt": "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<h1>Results for sdcqkzmwa<\"'></h1>",
+      "evidence": "Canary sdcqkzmwa<\"'> reflected unencoded in the HTML body (context: html_body).",
+      "repro_curl": "curl -i 'http://127.0.0.1:8080/search?q=sdcqkzmwa%3C%22%27%3E'"
+    },
+    "taint": null,
+    "suppressed": false,
+    "suppress_reason": null,
+    "raw": {}
+  },
+  {
+    "id": "60c9b191f3b92670df2e6f6a8add891e7a8a7c1b",
+    "engine": "dast",
+    "tool": "FlowStopper-dast",
+    "rule_id": "dast.sqli.error",
+    "cwe": 89,
+    "title": "SQL injection (error-based) in query parameter 'start'",
+    "severity": "critical",
+    "confidence": 0.9,
+    "code": null,
+    "runtime": {
+      "method": "GET",
+      "url": "http://127.0.0.1:8080/api/report?start=2024-01-01%27&end=2024-12-31",
+      "path": "/api/report",
+      "route_id": "GET /api/report",
+      "param": "start",
+      "param_location": "query",
+      "payload": "2024-01-01'",
+      "proof": "error",
+      "request": "GET /api/report?start=2024-01-01%27&end=2024-12-31 HTTP/1.1\r\nHost: 127.0.0.1:8080\r\nUser-Agent: FlowStopper-dast\r\nAccept: */*\r\n\r\n",
+      "response_excerpt": "HTTP/1.1 500 INTERNAL SERVER ERROR\r\nContent-Type: text/html; charset=utf-8\r\n\r\n...sqlite3.OperationalError: unrecognized token: \"''2024-01-01''\"...",
+      "evidence": "Appending a quote to 'start' produced 'sqlite3.OperationalError: unrecognized token'; the baseline response has no SQL error.",
+      "repro_curl": "curl -i 'http://127.0.0.1:8080/api/report?start=2024-01-01%27&end=2024-12-31'"
+    },
+    "taint": null,
+    "suppressed": false,
+    "suppress_reason": null,
+    "raw": {}
+  },
+  {
+    "id": "361bdc91b88b08dfd849b7cac788503029c3d91d",
+    "engine": "dast",
+    "tool": "FlowStopper-dast",
+    "rule_id": "dast.passive.csp-missing",
+    "cwe": 693,
+    "title": "Missing Content-Security-Policy header",
+    "severity": "medium",
+    "confidence": 0.9,
+    "code": null,
+    "runtime": {
+      "method": "GET",
+      "url": "http://127.0.0.1:8080/",
+      "path": "/",
+      "route_id": null,
+      "param": null,
+      "param_location": null,
+      "payload": null,
+      "proof": "header",
+      "request": "GET / HTTP/1.1\r\nHost: 127.0.0.1:8080\r\nUser-Agent: FlowStopper-dast\r\nAccept: */*\r\n\r\n",
+      "response_excerpt": "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: 512\r\n",
+      "evidence": "No Content-Security-Policy header on 5 of 5 sampled paths: /, /api/items, /api/ping, /api/report, /search",
+      "repro_curl": "curl -sI 'http://127.0.0.1:8080/'"
+    },
+    "taint": null,
+    "suppressed": false,
+    "suppress_reason": null,
+    "raw": {
+      "affected_paths": [
+        "/",
+        "/api/items",
+        "/api/ping",
+        "/api/report",
+        "/search"
+      ]
+    }
+  }
+]

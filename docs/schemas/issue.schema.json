@@ -1,0 +1,550 @@
+{
+  "$defs": {
+    "CodeLocation": {
+      "properties": {
+        "file": {
+          "title": "File",
+          "type": "string"
+        },
+        "line_start": {
+          "title": "Line Start",
+          "type": "integer"
+        },
+        "line_end": {
+          "title": "Line End",
+          "type": "integer"
+        },
+        "function": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Function"
+        },
+        "snippet": {
+          "default": "",
+          "title": "Snippet",
+          "type": "string"
+        }
+      },
+      "required": [
+        "file",
+        "line_start",
+        "line_end"
+      ],
+      "title": "CodeLocation",
+      "type": "object"
+    },
+    "Engine": {
+      "enum": [
+        "sast",
+        "dast"
+      ],
+      "title": "Engine",
+      "type": "string"
+    },
+    "Finding": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "engine": {
+          "$ref": "#/$defs/Engine"
+        },
+        "tool": {
+          "title": "Tool",
+          "type": "string"
+        },
+        "rule_id": {
+          "title": "Rule Id",
+          "type": "string"
+        },
+        "cwe": {
+          "title": "Cwe",
+          "type": "integer"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "severity": {
+          "$ref": "#/$defs/Severity"
+        },
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "code": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CodeLocation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "runtime": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RuntimeLocation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "taint": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TaintInfo"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "suppressed": {
+          "default": false,
+          "title": "Suppressed",
+          "type": "boolean"
+        },
+        "suppress_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Suppress Reason"
+        },
+        "raw": {
+          "additionalProperties": true,
+          "default": {},
+          "title": "Raw",
+          "type": "object"
+        }
+      },
+      "required": [
+        "id",
+        "engine",
+        "tool",
+        "rule_id",
+        "cwe",
+        "title",
+        "severity",
+        "confidence"
+      ],
+      "title": "Finding",
+      "type": "object"
+    },
+    "Label": {
+      "enum": [
+        "confirmed",
+        "code_only",
+        "runtime_only"
+      ],
+      "title": "Label",
+      "type": "string"
+    },
+    "LinkReason": {
+      "properties": {
+        "kind": {
+          "enum": [
+            "same_cwe",
+            "route_chain_origin",
+            "route_handler_span",
+            "route_reachable",
+            "same_param",
+            "same_method",
+            "auto_verified",
+            "ambiguity_penalty"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "detail": {
+          "title": "Detail",
+          "type": "string"
+        },
+        "weight": {
+          "title": "Weight",
+          "type": "number"
+        }
+      },
+      "required": [
+        "kind",
+        "detail",
+        "weight"
+      ],
+      "title": "LinkReason",
+      "type": "object"
+    },
+    "ParamLocation": {
+      "enum": [
+        "query",
+        "form",
+        "json",
+        "path",
+        "header",
+        "cookie"
+      ],
+      "title": "ParamLocation",
+      "type": "string"
+    },
+    "RuntimeLocation": {
+      "properties": {
+        "method": {
+          "title": "Method",
+          "type": "string"
+        },
+        "url": {
+          "title": "Url",
+          "type": "string"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "route_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Route Id"
+        },
+        "param": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Param"
+        },
+        "param_location": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ParamLocation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "payload": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Payload"
+        },
+        "proof": {
+          "default": "differential",
+          "enum": [
+            "error",
+            "echo",
+            "differential",
+            "marker",
+            "header",
+            "redirect",
+            "file"
+          ],
+          "title": "Proof",
+          "type": "string"
+        },
+        "request": {
+          "default": "",
+          "title": "Request",
+          "type": "string"
+        },
+        "response_excerpt": {
+          "default": "",
+          "title": "Response Excerpt",
+          "type": "string"
+        },
+        "evidence": {
+          "default": "",
+          "title": "Evidence",
+          "type": "string"
+        },
+        "repro_curl": {
+          "default": "",
+          "title": "Repro Curl",
+          "type": "string"
+        }
+      },
+      "required": [
+        "method",
+        "url",
+        "path"
+      ],
+      "title": "RuntimeLocation",
+      "type": "object"
+    },
+    "Severity": {
+      "enum": [
+        "critical",
+        "high",
+        "medium",
+        "low",
+        "info"
+      ],
+      "title": "Severity",
+      "type": "string"
+    },
+    "TaintInfo": {
+      "properties": {
+        "source_param": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Param"
+        },
+        "source_kind": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ParamLocation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "source_location": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CodeLocation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "call_chain": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Call Chain",
+          "type": "array"
+        },
+        "entry_routes": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Entry Routes",
+          "type": "array"
+        },
+        "sanitizers_seen": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Sanitizers Seen",
+          "type": "array"
+        }
+      },
+      "title": "TaintInfo",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "cwe": {
+      "title": "Cwe",
+      "type": "integer"
+    },
+    "title": {
+      "title": "Title",
+      "type": "string"
+    },
+    "label": {
+      "$ref": "#/$defs/Label"
+    },
+    "severity": {
+      "$ref": "#/$defs/Severity"
+    },
+    "cvss": {
+      "title": "Cvss",
+      "type": "number"
+    },
+    "risk": {
+      "title": "Risk",
+      "type": "number"
+    },
+    "code_findings": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Finding"
+      },
+      "title": "Code Findings",
+      "type": "array"
+    },
+    "runtime_findings": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Finding"
+      },
+      "title": "Runtime Findings",
+      "type": "array"
+    },
+    "primary_code": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CodeLocation"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "primary_runtime": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RuntimeLocation"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "link_score": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Link Score"
+    },
+    "reasons": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/LinkReason"
+      },
+      "title": "Reasons",
+      "type": "array"
+    },
+    "verified_by": {
+      "anyOf": [
+        {
+          "enum": [
+            "dast",
+            "auto-verify"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Verified By"
+    },
+    "fix": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Fix"
+    },
+    "owasp_2025": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Owasp 2025"
+    },
+    "first_seen_scan": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "First Seen Scan"
+    },
+    "last_seen_scan": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Last Seen Scan"
+    }
+  },
+  "required": [
+    "id",
+    "cwe",
+    "title",
+    "label",
+    "severity",
+    "cvss",
+    "risk"
+  ],
+  "title": "Issue",
+  "type": "object"
+}

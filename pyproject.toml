@@ -1,0 +1,64 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "flowstopper"
+version = "0.1.0"
+description = "FlowStopper: SAST + DAST correlation engine for Python web apps (hackathon build)"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Proprietary (hackathon submission; see THIRD_PARTY.md for third-party licences)" }
+authors = [{ name = "FlowStopper team" }]
+# Ranges here; exact pins live in requirements.lock / requirements-dev.lock (install from those).
+dependencies = [
+    "fastapi>=0.162",
+    "uvicorn>=0.54",
+    "pydantic>=2.14,<3",
+    "httpx>=0.28,<1",
+    "jinja2>=3.1,<4",
+    "typer>=0.27",
+    "beautifulsoup4>=4.15,<5",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.2",
+    "pytest-asyncio>=1.4",
+    "ruff==0.17.3",
+]
+
+[project.scripts]
+FlowStopper = "FlowStopper.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["FlowStopper", "FlowStopper.*"]
+
+[tool.setuptools.package-data]
+FlowStopper = ["report/templates/*"]
+
+# ---------------------------------------------------------------- ruff
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+extend-exclude = ["target_src", "keys", "apps/*/data", ".venv", ".venv-lock", "out", "build", "*.egg-info"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B"]
+# B008: Typer/FastAPI use calls in argument defaults (typer.Option, Depends) by design.
+# E501: `ruff format` owns line length; long string literals are allowed.
+ignore = ["B008", "E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["FlowStopper"]
+
+# ---------------------------------------------------------------- pytest
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+addopts = "-ra"
+markers = [
+    "integration: needs a running app (Mock A / Mock B / organisers' app); skips itself when unreachable",
+    "slow: takes more than ~10 s",
+]

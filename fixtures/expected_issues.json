@@ -1,0 +1,727 @@
+[
+  {
+    "id": "50a4e8907bf1ee33",
+    "cwe": 89,
+    "title": "SQL Injection in services.store.find_items (parameter 'category')",
+    "label": "confirmed",
+    "severity": "critical",
+    "cvss": 9.8,
+    "risk": 9.8,
+    "code_findings": [
+      {
+        "id": "2db0d2ea7f011d487476ee0e72b2e1fe7baf9513",
+        "engine": "sast",
+        "tool": "FlowStopper-taint",
+        "rule_id": "py.sqli.fstring.execute",
+        "cwe": 89,
+        "title": "SQL injection: request data reaches execute() through an f-string",
+        "severity": "critical",
+        "confidence": 0.9,
+        "code": {
+          "file": "services/store.py",
+          "line_start": 9,
+          "line_end": 9,
+          "function": "services.store.find_items",
+          "snippet": "    conn = get_db()\n    rows = conn.execute(f\"SELECT id, name FROM items WHERE category = '{category}'\").fetchall()\n    return [dict(r) for r in rows]"
+        },
+        "runtime": null,
+        "taint": {
+          "source_param": "category",
+          "source_kind": "query",
+          "source_location": {
+            "file": "views/catalog.py",
+            "line_start": 12,
+            "line_end": 12,
+            "function": "views.catalog.list_items",
+            "snippet": "    category = request.args.get(\"category\", \"\")"
+          },
+          "call_chain": [
+            "views.catalog.list_items",
+            "services.store.find_items"
+          ],
+          "entry_routes": [
+            "GET /api/items"
+          ],
+          "sanitizers_seen": []
+        },
+        "suppressed": false,
+        "suppress_reason": null,
+        "raw": {}
+      }
+    ],
+    "runtime_findings": [
+      {
+        "id": "7e61fe8433412f1489b26a80955a9040a53e5e3e",
+        "engine": "dast",
+        "tool": "FlowStopper-dast",
+        "rule_id": "dast.sqli.error",
+        "cwe": 89,
+        "title": "SQL injection (error-based) in query parameter 'category'",
+        "severity": "critical",
+        "confidence": 0.9,
+        "code": null,
+        "runtime": {
+          "method": "GET",
+          "url": "http://127.0.0.1:8080/api/items?category=books%27",
+          "path": "/api/items",
+          "route_id": "GET /api/items",
+          "param": "category",
+          "param_location": "query",
+          "payload": "books'",
+          "proof": "error",
+          "request": "GET /api/items?category=books%27 HTTP/1.1\r\nHost: 127.0.0.1:8080\r\nUser-Agent: FlowStopper-dast\r\nAccept: */*\r\n\r\n",
+          "response_excerpt": "HTTP/1.1 500 INTERNAL SERVER ERROR\r\nContent-Type: text/html; charset=utf-8\r\n\r\n...sqlite3.OperationalError: unrecognized token: \"'books''\"...",
+          "evidence": "Appending a quote to 'category' produced 'sqlite3.OperationalError: unrecognized token'; the baseline response has no SQL error.",
+          "repro_curl": "curl -i 'http://127.0.0.1:8080/api/items?category=books%27'"
+        },
+        "taint": null,
+        "suppressed": false,
+        "suppress_reason": null,
+        "raw": {
+          "other_payloads": [
+            "books\""
+          ]
+        }
+      }
+    ],
+    "primary_code": {
+      "file": "services/store.py",
+      "line_start": 9,
+      "line_end": 9,
+      "function": "services.store.find_items",
+      "snippet": "    conn = get_db()\n    rows = conn.execute(f\"SELECT id, name FROM items WHERE category = '{category}'\").fetchall()\n    return [dict(r) for r in rows]"
+    },
+    "primary_runtime": {
+      "method": "GET",
+      "url": "http://127.0.0.1:8080/api/items?category=books%27",
+      "path": "/api/items",
+      "route_id": "GET /api/items",
+      "param": "category",
+      "param_location": "query",
+      "payload": "books'",
+      "proof": "error",
+      "request": "GET /api/items?category=books%27 HTTP/1.1\r\nHost: 127.0.0.1:8080\r\nUser-Agent: FlowStopper-dast\r\nAccept: */*\r\n\r\n",
+      "response_excerpt": "HTTP/1.1 500 INTERNAL SERVER ERROR\r\nContent-Type: text/html; charset=utf-8\r\n\r\n...sqlite3.OperationalError: unrecognized token: \"'books''\"...",
+      "evidence": "Appending a quote to 'category' produced 'sqlite3.OperationalError: unrecognized token'; the baseline response has no SQL error.",
+      "repro_curl": "curl -i 'http://127.0.0.1:8080/api/items?category=books%27'"
+    },
+    "link_score": 1.0,
+    "reasons": [
+      {
+        "kind": "same_cwe",
+        "detail": "SAST CWE-89 and DAST CWE-89 are in the same family (sqli)",
+        "weight": 0.0
+      },
+      {
+        "kind": "route_chain_origin",
+        "detail": "taint flow originates at handler views.catalog.list_items for route GET /api/items (full taint chain, +0.05 specificity)",
+        "weight": 0.55
+      },
+      {
+        "kind": "same_param",
+        "detail": "DAST param 'category' == SAST source param 'category'",
+        "weight": 0.35
+      },
+      {
+        "kind": "same_method",
+        "detail": "DAST method GET == route method GET",
+        "weight": 0.1
+      }
+    ],
+    "verified_by": "dast",
+    "fix": null,
+    "owasp_2025": "A05:2025 - Injection",
+    "first_seen_scan": null,
+    "last_seen_scan": null
+  },
+  {
+    "id": "714c065860a7047f",
+    "cwe": 79,
+    "title": "Cross-site Scripting in views.search.search_page (parameter 'q')",
+    "label": "confirmed",
+    "severity": "medium",
+    "cvss": 6.1,
+    "risk": 6.1,
+    "code_findings": [
+      {
+        "id": "23f3529d429cca3b34532861df2da5f7f54f526a",
+        "engine": "sast",
+        "tool": "FlowStopper-taint",
+        "rule_id": "py.xss.fstring.html-response",
+        "cwe": 79,
+        "title": "XSS: request data returned in an HTML response without escaping",
+        "severity": "medium",
+        "confidence": 0.9,
+        "code": {
+          "file": "views/search.py",
+          "line_start": 14,
+          "line_end": 14,
+          "function": "views.search.search_page",
+          "snippet": "    if q:\n        return f\"<h1>Results for {q}</h1>\"\n    sort = request.args.get(\"sort\", \"name\")"
+        },
+        "runtime": null,
+        "taint": {
+          "source_param": "q",
+          "source_kind": "query",
+          "source_location": {
+            "file": "views/search.py",
+            "line_start": 10,
+            "line_end": 10,
+            "function": "views.search.search_page",
+            "snippet": "    q = request.args.get(\"q\", \"\")"
+          },
+          "call_chain": [
+            "views.search.search_page"
+          ],
+          "entry_routes": [
+            "GET /search"
+          ],
+          "sanitizers_seen": []
+        },
+        "suppressed": false,
+        "suppress_reason": null,
+        "raw": {}
+      }
+    ],
+    "runtime_findings": [
+      {
+        "id": "145174bcfbd4197ccb972242c87ce3b3bd3c31ac",
+        "engine": "dast",
+        "tool": "FlowStopper-dast",
+        "rule_id": "dast.xss.reflected",
+        "cwe": 79,
+        "title": "Reflected XSS in query parameter 'q'",
+        "severity": "medium",
+        "confidence": 0.9,
+        "code": null,
+        "runtime": {
+          "method": "GET",
+          "url": "http://127.0.0.1:8080/search?q=sdcqkzmwa%3C%22%27%3E",
+          "path": "/search",
+          "route_id": "GET /search",
+          "param": "q",
+          "param_location": "query",
+          "payload": "sdcqkzmwa<\"'>",
+          "proof": "echo",
+          "request": "GET /search?q=sdcqkzmwa%3C%22%27%3E HTTP/1.1\r\nHost: 127.0.0.1:8080\r\nUser-Agent: FlowStopper-dast\r\nAccept: */*\r\n\r\n",
+          "response_excerpt": "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<h1>Results for sdcqkzmwa<\"'></h1>",
+          "evidence": "Canary sdcqkzmwa<\"'> reflected unencoded in the HTML body (context: html_body).",
+          "repro_curl": "curl -i 'http://127.0.0.1:8080/search?q=sdcqkzmwa%3C%22%27%3E'"
+        },
+        "taint": null,
+        "suppressed": false,
+        "suppress_reason": null,
+        "raw": {}
+      }
+    ],
+    "primary_code": {
+      "file": "views/search.py",
+      "line_start": 14,
+      "line_end": 14,
+      "function": "views.search.search_page",
+      "snippet": "    if q:\n        return f\"<h1>Results for {q}</h1>\"\n    sort = request.args.get(\"sort\", \"name\")"
+    },
+    "primary_runtime": {
+      "method": "GET",
+      "url": "http://127.0.0.1:8080/search?q=sdcqkzmwa%3C%22%27%3E",
+      "path": "/search",
+      "route_id": "GET /search",
+      "param": "q",
+      "param_location": "query",
+      "payload": "sdcqkzmwa<\"'>",
+      "proof": "echo",
+      "request": "GET /search?q=sdcqkzmwa%3C%22%27%3E HTTP/1.1\r\nHost: 127.0.0.1:8080\r\nUser-Agent: FlowStopper-dast\r\nAccept: */*\r\n\r\n",
+      "response_excerpt": "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<h1>Results for sdcqkzmwa<\"'></h1>",
+      "evidence": "Canary sdcqkzmwa<\"'> reflected unencoded in the HTML body (context: html_body).",
+      "repro_curl": "curl -i 'http://127.0.0.1:8080/search?q=sdcqkzmwa%3C%22%27%3E'"
+    },
+    "link_score": 1.0,
+    "reasons": [
+      {
+        "kind": "same_cwe",
+        "detail": "SAST CWE-79 and DAST CWE-79 are in the same family (xss)",
+        "weight": 0.0
+      },
+      {
+        "kind": "route_chain_origin",
+        "detail": "taint flow originates at handler views.search.search_page for route GET /search (full taint chain, +0.05 specificity)",
+        "weight": 0.55
+      },
+      {
+        "kind": "same_param",
+        "detail": "DAST param 'q' == SAST source param 'q'",
+        "weight": 0.35
+      },
+      {
+        "kind": "same_method",
+        "detail": "DAST method GET == route method GET",
+        "weight": 0.1
+      }
+    ],
+    "verified_by": "dast",
+    "fix": null,
+    "owasp_2025": "A05:2025 - Injection",
+    "first_seen_scan": null,
+    "last_seen_scan": null
+  },
+  {
+    "id": "a0846113275c6b83",
+    "cwe": 89,
+    "title": "SQL Injection at GET /api/report (parameter 'start')",
+    "label": "runtime_only",
+    "severity": "critical",
+    "cvss": 9.8,
+    "risk": 9.8,
+    "code_findings": [],
+    "runtime_findings": [
+      {
+        "id": "60c9b191f3b92670df2e6f6a8add891e7a8a7c1b",
+        "engine": "dast",
+        "tool": "FlowStopper-dast",
+        "rule_id": "dast.sqli.error",
+        "cwe": 89,
+        "title": "SQL injection (error-based) in query parameter 'start'",
+        "severity": "critical",
+        "confidence": 0.9,
+        "code": null,
+        "runtime": {
+          "method": "GET",
+          "url": "http://127.0.0.1:8080/api/report?start=2024-01-01%27&end=2024-12-31",
+          "path": "/api/report",
+          "route_id": "GET /api/report",
+          "param": "start",
+          "param_location": "query",
+          "payload": "2024-01-01'",
+          "proof": "error",
+          "request": "GET /api/report?start=2024-01-01%27&end=2024-12-31 HTTP/1.1\r\nHost: 127.0.0.1:8080\r\nUser-Agent: FlowStopper-dast\r\nAccept: */*\r\n\r\n",
+          "response_excerpt": "HTTP/1.1 500 INTERNAL SERVER ERROR\r\nContent-Type: text/html; charset=utf-8\r\n\r\n...sqlite3.OperationalError: unrecognized token: \"''2024-01-01''\"...",
+          "evidence": "Appending a quote to 'start' produced 'sqlite3.OperationalError: unrecognized token'; the baseline response has no SQL error.",
+          "repro_curl": "curl -i 'http://127.0.0.1:8080/api/report?start=2024-01-01%27&end=2024-12-31'"
+        },
+        "taint": null,
+        "suppressed": false,
+        "suppress_reason": null,
+        "raw": {}
+      }
+    ],
+    "primary_code": null,
+    "primary_runtime": {
+      "method": "GET",
+      "url": "http://127.0.0.1:8080/api/report?start=2024-01-01%27&end=2024-12-31",
+      "path": "/api/report",
+      "route_id": "GET /api/report",
+      "param": "start",
+      "param_location": "query",
+      "payload": "2024-01-01'",
+      "proof": "error",
+      "request": "GET /api/report?start=2024-01-01%27&end=2024-12-31 HTTP/1.1\r\nHost: 127.0.0.1:8080\r\nUser-Agent: FlowStopper-dast\r\nAccept: */*\r\n\r\n",
+      "response_excerpt": "HTTP/1.1 500 INTERNAL SERVER ERROR\r\nContent-Type: text/html; charset=utf-8\r\n\r\n...sqlite3.OperationalError: unrecognized token: \"''2024-01-01''\"...",
+      "evidence": "Appending a quote to 'start' produced 'sqlite3.OperationalError: unrecognized token'; the baseline response has no SQL error.",
+      "repro_curl": "curl -i 'http://127.0.0.1:8080/api/report?start=2024-01-01%27&end=2024-12-31'"
+    },
+    "link_score": null,
+    "reasons": [
+      {
+        "kind": "ambiguity_penalty",
+        "detail": "not linked: runtime finding GET /api/report param 'start' matches 2 code findings in views.reports.report equally (0.80 vs 0.80) and the SAST source param is unknown",
+        "weight": -0.8
+      }
+    ],
+    "verified_by": null,
+    "fix": null,
+    "owasp_2025": "A05:2025 - Injection",
+    "first_seen_scan": null,
+    "last_seen_scan": null
+  },
+  {
+    "id": "02394b12393b3cd1",
+    "cwe": 89,
+    "title": "SQL Injection in views.reports.report (parameter unknown)",
+    "label": "code_only",
+    "severity": "critical",
+    "cvss": 9.8,
+    "risk": 5.88,
+    "code_findings": [
+      {
+        "id": "c959f3c372934f51a3feeb9c446e24084086dadd",
+        "engine": "sast",
+        "tool": "FlowStopper-taint",
+        "rule_id": "py.sqli.concat.execute",
+        "cwe": 89,
+        "title": "SQL injection: request data concatenated into SQL passed to execute()",
+        "severity": "critical",
+        "confidence": 0.7,
+        "code": {
+          "file": "views/reports.py",
+          "line_start": 12,
+          "line_end": 12,
+          "function": "views.reports.report",
+          "snippet": "    lo = filters.get(FIELDS[0], \"\")\n    total = db.execute(\"SELECT SUM(total) FROM orders WHERE created >= '\" + lo + \"'\").fetchone()"
+        },
+        "runtime": null,
+        "taint": {
+          "source_param": null,
+          "source_kind": "query",
+          "source_location": {
+            "file": "views/reports.py",
+            "line_start": 8,
+            "line_end": 8,
+            "function": "views.reports.report",
+            "snippet": "    filters = request.args.to_dict()"
+          },
+          "call_chain": [
+            "views.reports.report"
+          ],
+          "entry_routes": [
+            "GET /api/report"
+          ],
+          "sanitizers_seen": []
+        },
+        "suppressed": false,
+        "suppress_reason": null,
+        "raw": {}
+      }
+    ],
+    "runtime_findings": [],
+    "primary_code": {
+      "file": "views/reports.py",
+      "line_start": 12,
+      "line_end": 12,
+      "function": "views.reports.report",
+      "snippet": "    lo = filters.get(FIELDS[0], \"\")\n    total = db.execute(\"SELECT SUM(total) FROM orders WHERE created >= '\" + lo + \"'\").fetchone()"
+    },
+    "primary_runtime": null,
+    "link_score": null,
+    "reasons": [
+      {
+        "kind": "ambiguity_penalty",
+        "detail": "not linked: runtime finding GET /api/report param 'start' matches 2 code findings in views.reports.report equally (0.80 vs 0.80) and the SAST source param is unknown",
+        "weight": -0.8
+      }
+    ],
+    "verified_by": null,
+    "fix": null,
+    "owasp_2025": "A05:2025 - Injection",
+    "first_seen_scan": null,
+    "last_seen_scan": null
+  },
+  {
+    "id": "391dc00f4deabaac",
+    "cwe": 89,
+    "title": "SQL Injection in views.reports.report (parameter unknown)",
+    "label": "code_only",
+    "severity": "critical",
+    "cvss": 9.8,
+    "risk": 5.88,
+    "code_findings": [
+      {
+        "id": "391cabd32750a58ef629daea8633bf2f3e9e9b28",
+        "engine": "sast",
+        "tool": "FlowStopper-taint",
+        "rule_id": "py.sqli.concat.execute",
+        "cwe": 89,
+        "title": "SQL injection: request data concatenated into SQL passed to execute()",
+        "severity": "critical",
+        "confidence": 0.7,
+        "code": {
+          "file": "views/reports.py",
+          "line_start": 20,
+          "line_end": 20,
+          "function": "views.reports.report",
+          "snippet": "    hi = filters.get(FIELDS[1], \"\")\n    rows = db.execute(\"SELECT id, total FROM orders WHERE created <= '\" + hi + \"'\").fetchall()"
+        },
+        "runtime": null,
+        "taint": {
+          "source_param": null,
+          "source_kind": "query",
+          "source_location": {
+            "file": "views/reports.py",
+            "line_start": 8,
+            "line_end": 8,
+            "function": "views.reports.report",
+            "snippet": "    filters = request.args.to_dict()"
+          },
+          "call_chain": [
+            "views.reports.report"
+          ],
+          "entry_routes": [
+            "GET /api/report"
+          ],
+          "sanitizers_seen": []
+        },
+        "suppressed": false,
+        "suppress_reason": null,
+        "raw": {}
+      }
+    ],
+    "runtime_findings": [],
+    "primary_code": {
+      "file": "views/reports.py",
+      "line_start": 20,
+      "line_end": 20,
+      "function": "views.reports.report",
+      "snippet": "    hi = filters.get(FIELDS[1], \"\")\n    rows = db.execute(\"SELECT id, total FROM orders WHERE created <= '\" + hi + \"'\").fetchall()"
+    },
+    "primary_runtime": null,
+    "link_score": null,
+    "reasons": [
+      {
+        "kind": "ambiguity_penalty",
+        "detail": "not linked: runtime finding GET /api/report param 'start' matches 2 code findings in views.reports.report equally (0.80 vs 0.80) and the SAST source param is unknown",
+        "weight": -0.8
+      }
+    ],
+    "verified_by": null,
+    "fix": null,
+    "owasp_2025": "A05:2025 - Injection",
+    "first_seen_scan": null,
+    "last_seen_scan": null
+  },
+  {
+    "id": "e3bf1e5a6558b0e7",
+    "cwe": 798,
+    "title": "Hard-coded credential in settings.py (SECRET_KEY)",
+    "label": "code_only",
+    "severity": "critical",
+    "cvss": 9.1,
+    "risk": 5.46,
+    "code_findings": [
+      {
+        "id": "dec64ac423c1136364f34fd9617a7fffb2cdb181",
+        "engine": "sast",
+        "tool": "FlowStopper-secrets",
+        "rule_id": "py.secret.hardcoded.assign",
+        "cwe": 798,
+        "title": "Hard-coded secret assigned to SECRET_KEY",
+        "severity": "critical",
+        "confidence": 0.7,
+        "code": {
+          "file": "settings.py",
+          "line_start": 4,
+          "line_end": 4,
+          "function": null,
+          "snippet": "DEBUG = False\nSECRET_KEY = \"s3cr3t-fixture-key-123\"\nDATABASE = \"shop.db\""
+        },
+        "runtime": null,
+        "taint": null,
+        "suppressed": false,
+        "suppress_reason": null,
+        "raw": {}
+      }
+    ],
+    "runtime_findings": [],
+    "primary_code": {
+      "file": "settings.py",
+      "line_start": 4,
+      "line_end": 4,
+      "function": null,
+      "snippet": "DEBUG = False\nSECRET_KEY = \"s3cr3t-fixture-key-123\"\nDATABASE = \"shop.db\""
+    },
+    "primary_runtime": null,
+    "link_score": null,
+    "reasons": [],
+    "verified_by": null,
+    "fix": null,
+    "owasp_2025": "A07:2025 - Authentication Failures",
+    "first_seen_scan": null,
+    "last_seen_scan": null
+  },
+  {
+    "id": "336b1c72bf7f45d1",
+    "cwe": 693,
+    "title": "Missing Content-Security-Policy header (host-wide)",
+    "label": "runtime_only",
+    "severity": "medium",
+    "cvss": 4.2,
+    "risk": 4.2,
+    "code_findings": [],
+    "runtime_findings": [
+      {
+        "id": "361bdc91b88b08dfd849b7cac788503029c3d91d",
+        "engine": "dast",
+        "tool": "FlowStopper-dast",
+        "rule_id": "dast.passive.csp-missing",
+        "cwe": 693,
+        "title": "Missing Content-Security-Policy header",
+        "severity": "medium",
+        "confidence": 0.9,
+        "code": null,
+        "runtime": {
+          "method": "GET",
+          "url": "http://127.0.0.1:8080/",
+          "path": "/",
+          "route_id": null,
+          "param": null,
+          "param_location": null,
+          "payload": null,
+          "proof": "header",
+          "request": "GET / HTTP/1.1\r\nHost: 127.0.0.1:8080\r\nUser-Agent: FlowStopper-dast\r\nAccept: */*\r\n\r\n",
+          "response_excerpt": "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: 512\r\n",
+          "evidence": "No Content-Security-Policy header on 5 of 5 sampled paths: /, /api/items, /api/ping, /api/report, /search",
+          "repro_curl": "curl -sI 'http://127.0.0.1:8080/'"
+        },
+        "taint": null,
+        "suppressed": false,
+        "suppress_reason": null,
+        "raw": {
+          "affected_paths": [
+            "/",
+            "/api/items",
+            "/api/ping",
+            "/api/report",
+            "/search"
+          ]
+        }
+      }
+    ],
+    "primary_code": null,
+    "primary_runtime": {
+      "method": "GET",
+      "url": "http://127.0.0.1:8080/",
+      "path": "/",
+      "route_id": null,
+      "param": null,
+      "param_location": null,
+      "payload": null,
+      "proof": "header",
+      "request": "GET / HTTP/1.1\r\nHost: 127.0.0.1:8080\r\nUser-Agent: FlowStopper-dast\r\nAccept: */*\r\n\r\n",
+      "response_excerpt": "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: 512\r\n",
+      "evidence": "No Content-Security-Policy header on 5 of 5 sampled paths: /, /api/items, /api/ping, /api/report, /search",
+      "repro_curl": "curl -sI 'http://127.0.0.1:8080/'"
+    },
+    "link_score": null,
+    "reasons": [],
+    "verified_by": null,
+    "fix": null,
+    "owasp_2025": "A02:2025 - Security Misconfiguration",
+    "first_seen_scan": null,
+    "last_seen_scan": null
+  },
+  {
+    "id": "835cd730d6e56303",
+    "cwe": 79,
+    "title": "Cross-site Scripting in views.search.search_page (parameter 'sort')",
+    "label": "code_only",
+    "severity": "medium",
+    "cvss": 6.1,
+    "risk": 3.66,
+    "code_findings": [
+      {
+        "id": "e609743a7379a370f51a004206bc8f40e53e9b93",
+        "engine": "sast",
+        "tool": "FlowStopper-taint",
+        "rule_id": "py.xss.fstring.html-response",
+        "cwe": 79,
+        "title": "XSS: request data returned in an HTML response without escaping",
+        "severity": "medium",
+        "confidence": 0.9,
+        "code": {
+          "file": "views/search.py",
+          "line_start": 24,
+          "line_end": 24,
+          "function": "views.search.search_page",
+          "snippet": "    items = list_sorted(sort)\n    return f\"<p>Sorted by {sort}</p>\" + table(items)"
+        },
+        "runtime": null,
+        "taint": {
+          "source_param": "sort",
+          "source_kind": "query",
+          "source_location": {
+            "file": "views/search.py",
+            "line_start": 15,
+            "line_end": 15,
+            "function": "views.search.search_page",
+            "snippet": "    sort = request.args.get(\"sort\", \"name\")"
+          },
+          "call_chain": [
+            "views.search.search_page"
+          ],
+          "entry_routes": [
+            "GET /search"
+          ],
+          "sanitizers_seen": []
+        },
+        "suppressed": false,
+        "suppress_reason": null,
+        "raw": {}
+      }
+    ],
+    "runtime_findings": [],
+    "primary_code": {
+      "file": "views/search.py",
+      "line_start": 24,
+      "line_end": 24,
+      "function": "views.search.search_page",
+      "snippet": "    items = list_sorted(sort)\n    return f\"<p>Sorted by {sort}</p>\" + table(items)"
+    },
+    "primary_runtime": null,
+    "link_score": null,
+    "reasons": [],
+    "verified_by": null,
+    "fix": null,
+    "owasp_2025": "A05:2025 - Injection",
+    "first_seen_scan": null,
+    "last_seen_scan": null
+  },
+  {
+    "id": "81b25028f42a552c",
+    "cwe": 78,
+    "title": "OS Command Injection in services.net.ping_host (suppressed)",
+    "label": "code_only",
+    "severity": "critical",
+    "cvss": 9.8,
+    "risk": 5.88,
+    "code_findings": [
+      {
+        "id": "44b66c70b2b8420184fcdfb4fa096abd58215d33",
+        "engine": "sast",
+        "tool": "FlowStopper-taint",
+        "rule_id": "py.cmdi.subprocess",
+        "cwe": 78,
+        "title": "Command execution with request data (list form, no shell)",
+        "severity": "critical",
+        "confidence": 0.9,
+        "code": {
+          "file": "services/net.py",
+          "line_start": 21,
+          "line_end": 21,
+          "function": "services.net.ping_host",
+          "snippet": "def ping_host(host):\n    out = subprocess.run([\"ping\", \"-c\", \"1\", host], capture_output=True, text=True, timeout=5)\n    return out.stdout"
+        },
+        "runtime": null,
+        "taint": {
+          "source_param": "host",
+          "source_kind": "query",
+          "source_location": null,
+          "call_chain": [
+            "views.net.ping",
+            "services.net.ping_host"
+          ],
+          "entry_routes": [
+            "GET /api/ping"
+          ],
+          "sanitizers_seen": []
+        },
+        "suppressed": true,
+        "suppress_reason": "safe:subprocess-list-no-shell",
+        "raw": {}
+      }
+    ],
+    "runtime_findings": [],
+    "primary_code": {
+      "file": "services/net.py",
+      "line_start": 21,
+      "line_end": 21,
+      "function": "services.net.ping_host",
+      "snippet": "def ping_host(host):\n    out = subprocess.run([\"ping\", \"-c\", \"1\", host], capture_output=True, text=True, timeout=5)\n    return out.stdout"
+    },
+    "primary_runtime": null,
+    "link_score": null,
+    "reasons": [],
+    "verified_by": null,
+    "fix": null,
+    "owasp_2025": "A05:2025 - Injection",
+    "first_seen_scan": null,
+    "last_seen_scan": null
+  }
+]

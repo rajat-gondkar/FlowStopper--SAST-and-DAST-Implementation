@@ -1,0 +1,29 @@
+.git
+.github
+.venv
+.venv-lock
+.pytest_cache
+.ruff_cache
+**/__pycache__
+*.egg-info
+build
+dist
+out
+reports
+# Confidentiality (R5): never bake organiser material or local notes into an image.
+target_src
+keys
+*.key.json
+docs/target_notes.local.md
+*.local.md
+*.db
+# Dev-only material not needed in the runtime image.
+tests
+apps
+fixtures
+docs
+scripts
+.editorconfig
+.gitattributes
+.python-version
+requirements-dev.lock

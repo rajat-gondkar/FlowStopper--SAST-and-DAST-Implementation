@@ -1,0 +1,254 @@
+[
+  {
+    "id": "2db0d2ea7f011d487476ee0e72b2e1fe7baf9513",
+    "engine": "sast",
+    "tool": "FlowStopper-taint",
+    "rule_id": "py.sqli.fstring.execute",
+    "cwe": 89,
+    "title": "SQL injection: request data reaches execute() through an f-string",
+    "severity": "critical",
+    "confidence": 0.9,
+    "code": {
+      "file": "services/store.py",
+      "line_start": 9,
+      "line_end": 9,
+      "function": "services.store.find_items",
+      "snippet": "    conn = get_db()\n    rows = conn.execute(f\"SELECT id, name FROM items WHERE category = '{category}'\").fetchall()\n    return [dict(r) for r in rows]"
+    },
+    "runtime": null,
+    "taint": {
+      "source_param": "category",
+      "source_kind": "query",
+      "source_location": {
+        "file": "views/catalog.py",
+        "line_start": 12,
+        "line_end": 12,
+        "function": "views.catalog.list_items",
+        "snippet": "    category = request.args.get(\"category\", \"\")"
+      },
+      "call_chain": [
+        "views.catalog.list_items",
+        "services.store.find_items"
+      ],
+      "entry_routes": [
+        "GET /api/items"
+      ],
+      "sanitizers_seen": []
+    },
+    "suppressed": false,
+    "suppress_reason": null,
+    "raw": {}
+  },
+  {
+    "id": "dec64ac423c1136364f34fd9617a7fffb2cdb181",
+    "engine": "sast",
+    "tool": "FlowStopper-secrets",
+    "rule_id": "py.secret.hardcoded.assign",
+    "cwe": 798,
+    "title": "Hard-coded secret assigned to SECRET_KEY",
+    "severity": "critical",
+    "confidence": 0.7,
+    "code": {
+      "file": "settings.py",
+      "line_start": 4,
+      "line_end": 4,
+      "function": null,
+      "snippet": "DEBUG = False\nSECRET_KEY = \"s3cr3t-fixture-key-123\"\nDATABASE = \"shop.db\""
+    },
+    "runtime": null,
+    "taint": null,
+    "suppressed": false,
+    "suppress_reason": null,
+    "raw": {}
+  },
+  {
+    "id": "23f3529d429cca3b34532861df2da5f7f54f526a",
+    "engine": "sast",
+    "tool": "FlowStopper-taint",
+    "rule_id": "py.xss.fstring.html-response",
+    "cwe": 79,
+    "title": "XSS: request data returned in an HTML response without escaping",
+    "severity": "medium",
+    "confidence": 0.9,
+    "code": {
+      "file": "views/search.py",
+      "line_start": 14,
+      "line_end": 14,
+      "function": "views.search.search_page",
+      "snippet": "    if q:\n        return f\"<h1>Results for {q}</h1>\"\n    sort = request.args.get(\"sort\", \"name\")"
+    },
+    "runtime": null,
+    "taint": {
+      "source_param": "q",
+      "source_kind": "query",
+      "source_location": {
+        "file": "views/search.py",
+        "line_start": 10,
+        "line_end": 10,
+        "function": "views.search.search_page",
+        "snippet": "    q = request.args.get(\"q\", \"\")"
+      },
+      "call_chain": [
+        "views.search.search_page"
+      ],
+      "entry_routes": [
+        "GET /search"
+      ],
+      "sanitizers_seen": []
+    },
+    "suppressed": false,
+    "suppress_reason": null,
+    "raw": {}
+  },
+  {
+    "id": "e609743a7379a370f51a004206bc8f40e53e9b93",
+    "engine": "sast",
+    "tool": "FlowStopper-taint",
+    "rule_id": "py.xss.fstring.html-response",
+    "cwe": 79,
+    "title": "XSS: request data returned in an HTML response without escaping",
+    "severity": "medium",
+    "confidence": 0.9,
+    "code": {
+      "file": "views/search.py",
+      "line_start": 24,
+      "line_end": 24,
+      "function": "views.search.search_page",
+      "snippet": "    items = list_sorted(sort)\n    return f\"<p>Sorted by {sort}</p>\" + table(items)"
+    },
+    "runtime": null,
+    "taint": {
+      "source_param": "sort",
+      "source_kind": "query",
+      "source_location": {
+        "file": "views/search.py",
+        "line_start": 15,
+        "line_end": 15,
+        "function": "views.search.search_page",
+        "snippet": "    sort = request.args.get(\"sort\", \"name\")"
+      },
+      "call_chain": [
+        "views.search.search_page"
+      ],
+      "entry_routes": [
+        "GET /search"
+      ],
+      "sanitizers_seen": []
+    },
+    "suppressed": false,
+    "suppress_reason": null,
+    "raw": {}
+  },
+  {
+    "id": "c959f3c372934f51a3feeb9c446e24084086dadd",
+    "engine": "sast",
+    "tool": "FlowStopper-taint",
+    "rule_id": "py.sqli.concat.execute",
+    "cwe": 89,
+    "title": "SQL injection: request data concatenated into SQL passed to execute()",
+    "severity": "critical",
+    "confidence": 0.7,
+    "code": {
+      "file": "views/reports.py",
+      "line_start": 12,
+      "line_end": 12,
+      "function": "views.reports.report",
+      "snippet": "    lo = filters.get(FIELDS[0], \"\")\n    total = db.execute(\"SELECT SUM(total) FROM orders WHERE created >= '\" + lo + \"'\").fetchone()"
+    },
+    "runtime": null,
+    "taint": {
+      "source_param": null,
+      "source_kind": "query",
+      "source_location": {
+        "file": "views/reports.py",
+        "line_start": 8,
+        "line_end": 8,
+        "function": "views.reports.report",
+        "snippet": "    filters = request.args.to_dict()"
+      },
+      "call_chain": [
+        "views.reports.report"
+      ],
+      "entry_routes": [
+        "GET /api/report"
+      ],
+      "sanitizers_seen": []
+    },
+    "suppressed": false,
+    "suppress_reason": null,
+    "raw": {}
+  },
+  {
+    "id": "391cabd32750a58ef629daea8633bf2f3e9e9b28",
+    "engine": "sast",
+    "tool": "FlowStopper-taint",
+    "rule_id": "py.sqli.concat.execute",
+    "cwe": 89,
+    "title": "SQL injection: request data concatenated into SQL passed to execute()",
+    "severity": "critical",
+    "confidence": 0.7,
+    "code": {
+      "file": "views/reports.py",
+      "line_start": 20,
+      "line_end": 20,
+      "function": "views.reports.report",
+      "snippet": "    hi = filters.get(FIELDS[1], \"\")\n    rows = db.execute(\"SELECT id, total FROM orders WHERE created <= '\" + hi + \"'\").fetchall()"
+    },
+    "runtime": null,
+    "taint": {
+      "source_param": null,
+      "source_kind": "query",
+      "source_location": {
+        "file": "views/reports.py",
+        "line_start": 8,
+        "line_end": 8,
+        "function": "views.reports.report",
+        "snippet": "    filters = request.args.to_dict()"
+      },
+      "call_chain": [
+        "views.reports.report"
+      ],
+      "entry_routes": [
+        "GET /api/report"
+      ],
+      "sanitizers_seen": []
+    },
+    "suppressed": false,
+    "suppress_reason": null,
+    "raw": {}
+  },
+  {
+    "id": "44b66c70b2b8420184fcdfb4fa096abd58215d33",
+    "engine": "sast",
+    "tool": "FlowStopper-taint",
+    "rule_id": "py.cmdi.subprocess",
+    "cwe": 78,
+    "title": "Command execution with request data (list form, no shell)",
+    "severity": "critical",
+    "confidence": 0.9,
+    "code": {
+      "file": "services/net.py",
+      "line_start": 21,
+      "line_end": 21,
+      "function": "services.net.ping_host",
+      "snippet": "def ping_host(host):\n    out = subprocess.run([\"ping\", \"-c\", \"1\", host], capture_output=True, text=True, timeout=5)\n    return out.stdout"
+    },
+    "runtime": null,
+    "taint": {
+      "source_param": "host",
+      "source_kind": "query",
+      "source_location": null,
+      "call_chain": [
+        "views.net.ping",
+        "services.net.ping_host"
+      ],
+      "entry_routes": [
+        "GET /api/ping"
+      ],
+      "sanitizers_seen": []
+    },
+    "suppressed": true,
+    "suppress_reason": "safe:subprocess-list-no-shell",
+    "raw": {}
+  }
+]

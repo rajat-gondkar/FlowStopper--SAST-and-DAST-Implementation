@@ -1,0 +1,265 @@
+{
+  "$defs": {
+    "KeyCode": {
+      "additionalProperties": false,
+      "properties": {
+        "file": {
+          "description": "POSIX path relative to the scanned source root",
+          "title": "File",
+          "type": "string"
+        },
+        "line_start": {
+          "minimum": 1,
+          "title": "Line Start",
+          "type": "integer"
+        },
+        "line_end": {
+          "minimum": 1,
+          "title": "Line End",
+          "type": "integer"
+        },
+        "function": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "optional, informative only",
+          "title": "Function"
+        }
+      },
+      "required": [
+        "file",
+        "line_start",
+        "line_end"
+      ],
+      "title": "KeyCode",
+      "type": "object"
+    },
+    "KeyDecoy": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "cwe": {
+          "title": "Cwe",
+          "type": "integer"
+        },
+        "file": {
+          "title": "File",
+          "type": "string"
+        },
+        "line_start": {
+          "minimum": 1,
+          "title": "Line Start",
+          "type": "integer"
+        },
+        "line_end": {
+          "minimum": 1,
+          "title": "Line End",
+          "type": "integer"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "cwe",
+        "file",
+        "line_start",
+        "line_end",
+        "reason"
+      ],
+      "title": "KeyDecoy",
+      "type": "object"
+    },
+    "KeyRuntime": {
+      "additionalProperties": false,
+      "properties": {
+        "method": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "omit/null = any method",
+          "title": "Method"
+        },
+        "path": {
+          "description": "path template; <...>/{...} are wildcards; \"*\" = host-wide",
+          "title": "Path",
+          "type": "string"
+        },
+        "param": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "null = not parameter-specific",
+          "title": "Param"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "title": "KeyRuntime",
+      "type": "object"
+    },
+    "KeyVuln": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "cwe": {
+          "title": "Cwe",
+          "type": "integer"
+        },
+        "kind": {
+          "enum": [
+            "pair",
+            "code_only",
+            "runtime_only"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "code": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/KeyCode"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "runtime": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/KeyRuntime"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title"
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Notes"
+        }
+      },
+      "required": [
+        "id",
+        "cwe",
+        "kind"
+      ],
+      "title": "KeyVuln",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1",
+      "default": "1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "app": {
+      "title": "App",
+      "type": "string"
+    },
+    "language": {
+      "default": "python",
+      "title": "Language",
+      "type": "string"
+    },
+    "framework": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Framework"
+    },
+    "base_url": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "informative: where the app ran",
+      "title": "Base Url"
+    },
+    "vulns": {
+      "items": {
+        "$ref": "#/$defs/KeyVuln"
+      },
+      "title": "Vulns",
+      "type": "array"
+    },
+    "decoys": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/KeyDecoy"
+      },
+      "title": "Decoys",
+      "type": "array"
+    }
+  },
+  "required": [
+    "app",
+    "vulns"
+  ],
+  "title": "AnswerKey",
+  "type": "object"
+}

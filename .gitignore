@@ -1,0 +1,43 @@
+# ---- R5 confidentiality: organisers' source, answer key and notes never enter git ----
+target_src/
+keys/
+*.key.json
+docs/target_notes.local.md
+*.local.md
+
+# ---- scan outputs / storage ----
+*.db
+*.db-journal
+*.sqlite3
+/out/
+/.flowstopper/
+/reports/
+/sast.json
+/dast.json
+/routes.json
+/issues.json
+/scan_meta.json
+
+# ---- python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.venv-lock/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# ---- editors / OS ----
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# ---- mock app runtime data ----
+apps/*/data/
+apps/*/instance/
