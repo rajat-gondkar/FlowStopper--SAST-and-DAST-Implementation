@@ -24,7 +24,14 @@ ANSWER_KEY_FORMAT, ARCHITECTURE/LIMITATIONS skeletons, Dockerfile + compose, CI 
 lock files, `scripts/doctor.py`, Kiro steering. All module stubs created with owner + task tags.
 
 ## Phase 1 — core engines v0
-| P1-A1 index | P1-A2 routes | P1-A3 callgraph | P1-A4 Mock A — A ⬜
+
+| Task | Owner | Status | Notes |
+|---|---|---|---|
+| P1-A1 `sast/index.py` | A | ✅ | parse-only discovery + symbol table + import resolution, `resolve_call`; 18 tests (`tests/test_sast_index.py`); D-18, D-19 |
+| P1-A2 `sast/routes/` | A | ⬜ | |
+| P1-A3 `sast/callgraph.py` | A | ⬜ | |
+| P1-A4 `apps/mock_a/` | A | ⬜ | |
+
 | P1-B1 client | P1-B2 discovery | P1-B3 baseline | P1-B4 sqli+xss | P1-B5 metrics — B ⬜
 
 ## Phase 2 — depth
@@ -62,3 +69,7 @@ _Log_
 - 2026-10-31 — Push policy hardened into a **hard block**: a PreToolUse hook
   (`.kiro/hooks/block-git-writes.json` + `scripts/git_guard.py`) refuses any agent shell command that
   runs `git add`, `git commit` or `git push`. Person 1 still does all staging/committing/pushing.
+- 2026-10-31 — **P1-A1 done** (Dev A): `FlowStopper/sast/index.py` — file discovery (vendor dirs pruned,
+  >1 MB skipped), parse-only `ast` index tolerant of syntax errors, qualified-name symbol table, import
+  resolution and `resolve_call`. Smoke-tested on the bench app and ~300 real library files. `make check`
+  green (56 tests).
