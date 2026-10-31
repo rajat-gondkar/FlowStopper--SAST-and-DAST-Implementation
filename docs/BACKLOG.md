@@ -206,3 +206,101 @@ the one to prioritise for the real app.
   `FlowStopper eval --key keys/answer_key.json --scan latest --out docs/metrics/baseline.json`.
 - **P0-J5 target notes** (`docs/target_notes.local.md`, git-ignored) — joint, once the app is released.
 - Re-run this triage against the real app and re-rank; the ordering above assumes Mock A's shape.
+
+---
+
+## Addendum (Dev A): bench app run + Dev A items
+
+The items above come from Mock A. The bench app (we45 Vulnerable-Flask-App, third-party, written by
+neither of us) was scanned as part of P3-J1 (`docs/metrics/baseline_bench.json`). It scores lower and
+is the better guide to how we'll do on an app we didn't write:
+
+| Metric | Bench app | Status |
+|---|---|---|
+| Code detection | 3/4 (75%) | good |
+| Runtime detection | 1/3 (33.3%) | **below** |
+| Correct links | 0/2 (0%) | **below** |
+| Wrong links | 0/0 | n/a |
+| False alarms | 0/9 (0%) | great |
+
+Per-item: VF01 SQLi code OK / runtime **miss**; VF02 404-page XSS code **miss** / runtime **miss**;
+VF03, VF04 secrets OK; VF05 missing CSP OK.
+
+## 7. DAST has no login support — Owner: **B** · cost: medium · P4-B1 · **rank first for the real app**
+
+**Fixes the bench SQLi (VF01) runtime miss.** `POST /search` needs a JWT; without one every request gets
+`{"Error": "Not Authenticated!"}`, so no check ever reaches the vulnerable code. SAST found the bug
+correctly (`app/app.py:265`, `source_param=search`, `entry_routes=["POST /search"]`), so the pair
+should link as soon as DAST can authenticate.
+
+`FlowStopper/dast/config.py` has no auth fields at all, but spec P1-B1 asks for "static
+headers/cookies, or a login step (POST credentials to a configured URL and keep the cookie jar)". For
+the bench app the login returns the token in a response **header** (`Authorization`), not a cookie,
+so the login step also needs a way to copy a response header onto later requests.
+
+- Expected impact on the bench app: runtime 1/3 → 2/3, links 0/2 → 1/2.
+- **Real app:** if its interesting routes are behind a login, this item decides most of the
+  runtime and link scores. Rank it above item 1 there.
+- Dev A follow-up: once the config exists, `FlowStopper scan` needs options to pass it through
+  (P5-A2 CLI polish, or earlier if the real app needs it).
+
+## 8. VF02: XSS in the 404 handler is missed by both sides — Owner: A + B · cost: medium · P4
+
+The handler builds HTML with `'%s' % request.url` and passes it to `render_template_string`.
+- **SAST (A):** `request.url` is not a taint source and `render_template_string` is not a sink. Both
+  are generic Flask facts (not app-specific), so adding them is a fair P4-A1 rule.
+- **DAST (B):** it only probes known routes. Reflection on an *unknown* path needs one extra request
+  to a non-existent path carrying the canary, which fits the existing XSS payloads.
+- The key marks this item as uncertain. Low priority unless the real app's 404 page reflects input.
+
+## 9. SAST false positive: response content type set after construction — Owner: **A** · cost: small · P4-A1
+
+Bench app `app/app.py:185` is reported as XSS:
+
+```python
+resp = Response(json.dumps({"Authenticated": True, "User": username}))
+...
+resp.mimetype = "application/json"  # line 189: makes the response JSON, not HTML
+return resp
+```
+
+The XSS rule judges the response only at construction and doesn't see the later `resp.mimetype =` /
+`resp.content_type =` / `resp.headers["Content-Type"] =` assignment. Generic fix: track those writes
+on the response variable before it is returned. Not counted as a false alarm (no decoy there), but it
+is reported noise, and the pattern is common in real apps.
+
+## 10. Secrets in test code and seed data — Owner: **A** · cost: small · P4-A1 (decision)
+
+Two "unplanted" bench findings: a seeded default login (`user.password = 'admin123'`, `app/app.py:63`)
+and a credential dict in the app's own test file (`tests/e2e_zap.py:15`). Both are real hard-coded
+credentials, so neither is a wrong detection. Decide whether files under `tests/` / `test_*.py` are
+reported at lower confidence or not at all. Record the choice as a Dev A decision.
+
+## 11. Remaining SAST items from the Phase 2 review — Owner: **A** · P4-A1 / P4-A2
+
+Recorded in `docs/PROGRESS_Dev1.md` ("Phase 4 backlog"). None changes a current metric; all are
+misses, never wrong answers:
+- `render_template("x.html", **ctx)` (context splat) is not seen as a template sink.
+- Sinks that no route can reach are dropped instead of being reported as `suppressed: unreachable`
+  (needed by P4-A2, B-2 noise cut).
+- `_is_abort` treats any unresolved `fail`/`exit`/`abort` call as ending the block.
+- The fixpoint cap (10 rounds) is reached silently; log a warning.
+- Receiver-based sink matching (`.open()`, `.read_text()`, `.raw`, `.extra`) is broad; check it for
+  false positives on the real app.
+
+## 12. Mock A listens on every network interface in debug mode — Owner: **A** · cost: small · now
+
+`python app.py` runs `app.run(host="0.0.0.0", debug=True)`. That puts the Werkzeug debug console
+(PIN-protected, but a code-execution console) on the local network, not just this laptop. Fix: default
+to `127.0.0.1` and let the Dockerfile set `0.0.0.0` through an env var. This changes no scanner result.
+
+## Answer to item 6 (Dev A)
+
+Agreed that the key is missing the `password` injection point at `POST /login` and the reflection at
+`GET /download`. Dev A will decide in P4 whether to add them as planted entries (which changes the
+totals) or to list them as known extras, and will record the choice.
+
+## Ownership summary for Phase 4
+
+- **Dev B:** items 7, 1, 2, 3, 4, 5, plus the DAST half of 8.
+- **Dev A:** items 9, 10, 11, 12, the SAST half of 8, plus the answer to item 6.

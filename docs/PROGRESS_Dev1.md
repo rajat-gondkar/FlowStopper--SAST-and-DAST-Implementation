@@ -109,6 +109,9 @@ _Log_
   0/7 · 1/21). 10 tests in `tests/test_pipeline.py` (1 live, skips when Mock A is down).
 - 2026-10-31 — **P3-J1 done** (Dev A ran it; Dev B does P3-J2): baselines saved for Mock A and the bench
   app under per-target names; `baseline.json` reserved for the organisers' app (A-36).
+- 2026-10-31 — **P3-J2 closed**: Dev B's `docs/BACKLOG.md` (Mock A items 1–6) plus a Dev A addendum
+  (items 7–12: bench app results, DAST login support, VF02, the bench XSS false positive, secrets in
+  test code, the Phase 2 review items, Mock A binding to 0.0.0.0) and a Phase 4 ownership split.
 
 ## Phase 4 backlog (from the Phase 2 semantic review — all misses, never wrong answers)
 Carry these into **P4-A1** (generic-rule backlog) / **P4-A2** (B-2 suppression):
