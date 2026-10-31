@@ -135,6 +135,13 @@ imports your command functions).
 
 - [ ] **P6-J1/J2/J3** unseal Mock B, run pipeline + eval, record first run before changes, fix only
   **generic** behaviours (R6), no regression on real app / Mock A.
+- [ ] **P6-B2 · promote Mock B's checks into `tests/` (after unsealing)** — while Mock B is sealed its
+  verification deliberately lives outside the test suite in `apps/mock_b/selfcheck.py`, so `make check`
+  does not gate it (decision **B-07**). Once Phase 6 unseals the app, move the suitable assertions into
+  `tests/test_mock_b.py` (planted bugs fire, decoys stay safe) so CI guards them the way it guards
+  Mock A, and keep `selfcheck.py` only for whatever does not fit the test suite. Run
+  `.venv/bin/python -m apps.mock_b.selfcheck` before and after the move and confirm `make check` stays
+  green.
 - [ ] **P6-B1 · `diff` (B-5, OPTIONAL)** — `FlowStopper diff <scanA> <scanB>` → new/fixed/open by
   `Issue.id`; only if everything else is done. *(First on the cut list.)*
 

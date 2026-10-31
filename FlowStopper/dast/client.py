@@ -12,7 +12,7 @@ from __future__ import annotations
 import asyncio
 import shlex
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from types import TracebackType
 from typing import Optional
 from urllib.parse import urljoin, urlsplit
@@ -44,6 +44,9 @@ class HttpExchange:
     body: str  # <= BODY_MAX, for checks (reflection/marker detection)
     elapsed_ms: float
     repro_curl: str
+    # Raw Set-Cookie lines. Kept separately because several cookies arrive as repeated headers and
+    # response_headers (a plain dict) would collapse them - the passive cookie-flag check needs each.
+    set_cookies: list[str] = field(default_factory=list)
 
     @property
     def is_redirect(self) -> bool:
@@ -176,6 +179,7 @@ class DastClient:
             body=body,
             elapsed_ms=elapsed,
             repro_curl=_repro_curl(method, final_url, sent_headers, body_payload, self.keep_secrets),
+            set_cookies=list(resp.headers.get_list("set-cookie")),
         )
         self.exchanges.append(ex)
         return ex

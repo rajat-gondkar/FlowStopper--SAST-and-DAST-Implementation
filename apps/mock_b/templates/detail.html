@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>{{ item.name if item else "Unknown item" }} &middot; shoplite-b</title>
+</head>
+<body>
+  <main>
+    {# vuln:B04 - |safe disables autoescaping for a caller-supplied value #}
+    <p class="label">{{ label|safe }}</p>
+    {% if item %}
+      <h1>{{ item.name }}</h1>
+      <dl>
+        <dt>SKU</dt><dd>{{ item.sku }}</dd>
+        <dt>Band</dt><dd>{{ item.band }}</dd>
+        <dt>Retail</dt><dd>{{ price }}</dd>
+      </dl>
+    {% else %}
+      <h1>Unknown item</h1>
+    {% endif %}
+    <a href="/catalogue/items">Back to the catalogue</a>
+  </main>
+</body>
+</html>

@@ -8,10 +8,11 @@ only Appendix B payloads leave the tool (R4).
 
 from __future__ import annotations
 
+import hashlib
 import random
 import string
 from dataclasses import dataclass, field
-from urllib.parse import quote, urlsplit, urlunsplit
+from urllib.parse import quote, urlencode, urlsplit, urlunsplit
 
 from FlowStopper import cwe, ids
 from FlowStopper.dast.baseline import Baseline, establish_baseline
@@ -63,6 +64,21 @@ def build_request(endpoint: Endpoint, param: Param, value: str) -> tuple[str, st
     return endpoint.method.upper(), url, kw
 
 
+def build_raw_query_request(endpoint: Endpoint, param: Param, raw_value: str) -> tuple[str, str, dict]:
+    """Like build_request, but splices `raw_value` into the query string **verbatim**.
+
+    Needed for Appendix B payloads that are themselves percent-encoded (the `..%2f` traversal
+    variant): httpx would re-encode the `%` and send `..%252f`, so the target would only ever see a
+    literal `%2f` instead of the separator the payload is testing for.
+    """
+    method, url, kw = build_request(endpoint, param, raw_value)
+    others = {k: v for k, v in (kw.pop("params", {}) or {}).items() if k != param.name}
+    query = urlencode(others)
+    raw = f"{param.name}={raw_value}"
+    s = urlsplit(url)
+    return method, urlunsplit((s.scheme, s.netloc, s.path, f"{query}&{raw}" if query else raw, "")), kw
+
+
 @dataclass
 class CheckContext:
     client: DastClient
@@ -76,6 +92,17 @@ class CheckContext:
     def create(cls, client: DastClient, base_url: str, config: DastConfig | None = None) -> CheckContext:
         config = config or DastConfig()
         return cls(client, base_url, config, random.Random(config.seed if config.seed is not None else 0))
+
+    def derive(self, key: str) -> CheckContext:
+        """Child context whose RNG is seeded from (scan seed, `key`) - shares the client and audit log.
+
+        The runner gives each (endpoint, param) unit its own derived context so canaries depend on
+        *which* unit is being tested, never on concurrent scheduling order. Without this, two runs of
+        the same scan would record different payloads in the evidence (spec rule 7: determinism).
+        """
+        material = f"{self.config.seed if self.config.seed is not None else 0}|{key}".encode()
+        rng = random.Random(hashlib.sha256(material).hexdigest())
+        return CheckContext(self.client, self.base_url, self.config, rng, {}, self.sent_payloads)
 
     def token(self, n: int = 7) -> str:
         """A per-scan random lowercase canary (the `sdcRND` token in Appendix B)."""
@@ -91,9 +118,13 @@ class CheckContext:
             self._baselines[key] = await establish_baseline(self.client, method, url, **kw)
         return self._baselines[key]
 
-    async def send(self, endpoint: Endpoint, param: Param, payload: str) -> HttpExchange:
+    async def send(self, endpoint: Endpoint, param: Param, payload: str, *, raw_query: bool = False) -> HttpExchange:
+        """Send one payload. `raw_query` splices an already-encoded payload into the query verbatim."""
         self.sent_payloads.append(payload)
-        method, url, kw = build_request(endpoint, param, payload)
+        if raw_query and param.location is ParamLocation.QUERY:
+            method, url, kw = build_raw_query_request(endpoint, param, payload)
+        else:
+            method, url, kw = build_request(endpoint, param, payload)
         return await self.client.request(method, url, **kw)
 
 

@@ -1,0 +1,11 @@
+# shoplite-b (Mock B) - held-out fixture app. Dev dev port 8090 (DECISIONS D-04).
+#   docker compose -f apps/mock_b/docker-compose.yml up
+services:
+  mock_b:
+    build: .
+    image: shoplite-b:dev
+    container_name: shoplite-b
+    ports:
+      - "127.0.0.1:8090:8090"
+    environment:
+      SHOPLITE_B_DATA: /app/data
