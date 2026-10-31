@@ -4,6 +4,11 @@ Dev A's own design decisions (ids `A-NN`, newest first). Joint/Phase-0 decisions
 [`DECISIONS.md`](DECISIONS.md); Dev B's are in [`DECISIONS_Dev2.md`](DECISIONS_Dev2.md). Using an
 `A-` prefix keeps our ids from ever colliding with Dev B's `B-` ids.
 
+- **A-36 (Phase 3 baselines are named per target)**: the spec's `docs/metrics/baseline.json` is the
+  organisers'-app baseline, and that app is not available yet. So the P3-J1 runs are saved as
+  `baseline_mock_a.json` and `baseline_bench.json`, and `baseline.json` stays unused until the real
+  app arrives. Mock A was scanned unmodified, so its baseline shows the state before Phase 4 fixes.
+  `docs/metrics/README.md` lists which file is which.
 - **A-35 (unique scan ids; meta before "completed")**: `Storage.make_scan_id` hashes a
   seconds-precision timestamp, so two scans of the same source and target in one second would share
   and overwrite one `scans` row. `run_pipeline` now passes an explicit `scan_id` and adds a `#n`

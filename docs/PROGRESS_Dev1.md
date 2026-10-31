@@ -50,8 +50,12 @@ started. Dev B tracks their own in [`PROGRESS_Dev2.md`](PROGRESS_Dev2.md). Full 
   correlate → SQLite → `issues.json` + `scan_meta.json`. **Mock A live: 25 routes, 14 SAST + 19 DAST
   findings (634 requests, DAST 2.1 s, total 2.1 s), 21 issues (7 confirmed, 6 code-only, 8 runtime-only;
   1 suppressed); eval code 13/13, runtime 10/13, correct links 7/10, wrong links 0/7, false alarms
-  1/21**, identical to the manual run; second scan gives identical issue ids. Decisions A-30..A-34.
+  1/21**, identical to the manual run; second scan gives identical issue ids. Decisions A-30..A-35.
   `make check` green (383 passed, 1 skipped).
+- [x] P3-J1 baselines (run by Dev A) — `docs/metrics/baseline_mock_a.json` (code 13/13, runtime 10/13,
+  links 7/10, wrong 0/7, false alarms 1/21) and `docs/metrics/baseline_bench.json` (code 3/4, runtime
+  1/3, links 0/2, wrong 0/0, false alarms 0/9). The spec's `baseline.json` waits for the organisers'
+  app (A-36). Triage handed to Dev B for `docs/BACKLOG.md` (P3-J2).
 
 ## Third-party benchmark (we45 Vulnerable-Flask-App) — Dev A owned
 - [x] Choose app + log (D-16); `make bench-fetch`/`make bench`; source-verified `answer_key.json`;
@@ -103,6 +107,8 @@ _Log_
 - 2026-10-31 — **P3-A1 done**: `FlowStopper scan` runs the whole pipeline in one command; on live Mock A
   it reproduces the manual sast→dast→correlate run exactly (21 issues, eval 13/13 · 10/13 · 7/10 ·
   0/7 · 1/21). 10 tests in `tests/test_pipeline.py` (1 live, skips when Mock A is down).
+- 2026-10-31 — **P3-J1 done** (Dev A ran it; Dev B does P3-J2): baselines saved for Mock A and the bench
+  app under per-target names; `baseline.json` reserved for the organisers' app (A-36).
 
 ## Phase 4 backlog (from the Phase 2 semantic review — all misses, never wrong answers)
 Carry these into **P4-A1** (generic-rule backlog) / **P4-A2** (B-2 suppression):
