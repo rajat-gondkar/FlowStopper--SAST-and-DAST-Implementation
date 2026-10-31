@@ -29,6 +29,7 @@ from FlowStopper.models import CodeLocation, ParamLocation, Route, TaintInfo
 from FlowStopper.sast.callgraph import CallGraph, build_call_graph, local_types
 from FlowStopper.sast.config import SastConfig
 from FlowStopper.sast.index import FunctionInfo, ProjectIndex
+from FlowStopper.sast.routes.fastapi import body_model_params
 from FlowStopper.sast.suppress import (
     UNREACHABLE,
     is_request_hook,
@@ -181,7 +182,7 @@ def analyse_taint(
         result = walk_function(
             ctx,
             handler,
-            _handler_env(handler, by_handler[qualname]),
+            _handler_env(handler, by_handler[qualname], body_model_params(index, handler)),
             cfg,
             hook=_SummaryHook(index, summaries, qualname),
             is_handler=True,
@@ -403,11 +404,13 @@ def _actuals(site: CallSite, callee: FunctionInfo) -> dict[int, TaintValue]:
 
 
 # --------------------------------------------------------------------------- phase 2
-def _handler_env(handler: FunctionInfo, routes: list[Route]) -> TaintEnv:
-    """Seed a handler's signature parameters from its routes' params (A-14)."""
+def _handler_env(
+    handler: FunctionInfo, routes: list[Route], body_models: Optional[dict[str, list[str]]] = None
+) -> TaintEnv:
+    """Seed a handler's signature parameters from its routes' params (A-14) and pydantic bodies (A-65)."""
     env: TaintEnv = {}
     for route in sorted(routes, key=lambda r: r.id):
-        for name, ref in handler_param_sources(handler, route).items():
+        for name, ref in handler_param_sources(handler, route, body_models).items():
             if name not in env:
                 env[name] = source_value(ref, handler.file, handler.line_start, handler.qualname)
     return env

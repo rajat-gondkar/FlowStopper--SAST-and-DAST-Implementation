@@ -3,6 +3,22 @@
 Dev A's own design decisions (ids `A-NN`, newest first). Joint/Phase-0 decisions are in the shared
 [`DECISIONS.md`](DECISIONS.md); Dev B's are in [`DECISIONS_Dev2.md`](DECISIONS_Dev2.md). Using an
 `A-` prefix keeps our ids from ever colliding with Dev B's `B-` ids.
+- **A-66 (Phase 6 round 1 scope)**: round 1 ships one fix (A-65), the smallest set that reaches the
+  round goal of 7/10 Mock B links. The other cheap SAST item, Starlette's keyword form
+  `TemplateResponse(request=..., name="page.html", context={...})` (B04), is deferred to round 2 even
+  though it is small: `name` cannot simply join `TEMPLATE_NAME_KEYWORDS`, because Flask's
+  `render_template("x.html", name=user)` passes `name` as a template variable, so the fix must be
+  specific to `TemplateResponse` and needs its own regression check. The live selfcheck secrets in
+  `apps/mock_b/selfcheck.py` (2 unplanted, informational, not false alarms) are left alone.
+- **A-65 (FastAPI pydantic body as a JSON container)**: P1-A2 already expanded a pydantic-typed handler
+  param into its field names as JSON route params, but the taint seed (A-14) only matched route params
+  to declared names, so the param itself (`body`) was never tainted and `body.field` reached sinks
+  untainted. `routes.fastapi.body_model_params` now reports params `_classify` treats as a pydantic
+  body (no `Query/Path/Body/Form/Header/Cookie/Depends/Security` marker), and
+  `handler_param_sources` seeds such a param as an unnamed JSON container, which `body.field` narrows
+  to the HTTP param `field` (A-15 refine). It is seeded only when the route lists every model field as
+  a JSON param, so non-FastAPI routes and partially resolved models are never guessed. A whole-model
+  use (`save(body)`) stays an unnamed container (lower confidence, no param), as for `request.json`.
 - **A-64 (exit codes, refines A-33)**: 0 ok, 1 error, 2 only for the `scan --fail-on` CI gate, 64
   (`EX_USAGE`) for usage errors (bad option or value, unknown command, no arguments). Click gives
   every usage error exit 2, so `cli.main()` runs `app(standalone_mode=False)` and remaps. Typer 0.27

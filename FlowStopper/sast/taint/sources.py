@@ -18,6 +18,7 @@ Handler signature parameters
 from __future__ import annotations
 
 import ast
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Optional
 
@@ -111,13 +112,24 @@ def is_request(expr: ast.expr, ctx: ModuleContext) -> bool:
     return len(parts) == 2 and parts[0] in RECEIVER_NAMES and parts[1] in REQUEST_NAMES
 
 
-def handler_param_sources(fn: FunctionInfo, route: Route) -> dict[str, SourceRef]:
-    """Handler signature parameters that carry request data, keyed by parameter name (A-14)."""
+def handler_param_sources(
+    fn: FunctionInfo, route: Route, body_models: Optional[Mapping[str, list[str]]] = None
+) -> dict[str, SourceRef]:
+    """Handler signature parameters that carry request data, keyed by parameter name (A-14).
+
+    `body_models` maps a parameter to the fields of the pydantic model it is annotated with (FastAPI
+    JSON body). Such a parameter is seeded as a JSON *container*, so `body.field` narrows to the HTTP
+    parameter `field` (A-65). It is seeded only when the route lists every field as a JSON param.
+    """
     declared = set(fn.params)
     out: dict[str, SourceRef] = {}
     for param in route.params:
         if param.name in declared and param.name not in out:
             out[param.name] = SourceRef(param.name, param.location, False)
+    json_names = {param.name for param in route.params if param.location is ParamLocation.JSON}
+    for name, fields in sorted((body_models or {}).items()):
+        if name in declared and name not in out and fields and json_names.issuperset(fields):
+            out[name] = SourceRef(None, ParamLocation.JSON, True)
     return out
 
 
