@@ -1,0 +1,12 @@
+# Mock A (our own Flask fixture). Dev port 5050 (DECISIONS D-04).
+#   docker compose -f apps/mock_a/docker-compose.yml up
+services:
+  mock_a:
+    build: .
+    image: flowstopper-mock-a
+    container_name: flowstopper-mock-a
+    ports:
+      - "127.0.0.1:5050:5050"
+    environment:
+      - PORT=5050
+      - FLASK_DEBUG=1

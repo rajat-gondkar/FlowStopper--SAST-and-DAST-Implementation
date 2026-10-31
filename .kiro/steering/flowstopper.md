@@ -9,8 +9,10 @@ parallel. Authoritative docs: `FlowStopper_BUILD_SPEC.md` (source of truth), `do
 - **Edit only your owner's files** (ownership table in `docs/PLAN.md`). Shared contracts
   (`FlowStopper/models.py`, `cwe.py`, `ids.py`, `evalkit/keyschema.py`) are frozen at `contract-v1`:
   additive changes only, via `docs/CONTRACT_CHANGES.md` with the other dev's ACK.
-- Run `make check` (ruff + pytest) after changes; keep it green before merging. Then update
-  `docs/PROGRESS.md` and log decisions in `docs/DECISIONS.md`.
+- Run `make check` (ruff + pytest) after changes; keep it green before merging. Then update **your
+  own** progress file (`docs/PROGRESS_Dev1.md` = Dev A, `docs/PROGRESS_Dev2.md` = Dev B) and log
+  decisions in **your own** `docs/DECISIONS_Dev1.md` (ids `A-NN`) / `docs/DECISIONS_Dev2.md` (ids
+  `B-NN`). Shared/joint decisions stay in `docs/DECISIONS.md`. Per-dev files avoid merge conflicts.
 - Regenerate, don't hand-edit, generated files: `make fixtures`, `make schemas`.
 
 ## Never

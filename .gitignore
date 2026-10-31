@@ -40,6 +40,7 @@ htmlcov/
 
 # ---- mock app runtime data ----
 apps/*/data/
+apps/*/docs_store/
 apps/*/instance/
 
 # ---- third-party benchmark apps: cloned at a pinned commit, NEVER vendored ----

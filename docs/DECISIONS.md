@@ -1,40 +1,16 @@
-# Decisions
+# Decisions (shared / joint)
 
-One line per decision (spec rule: when a detail is ambiguous, pick the simpler option, record it,
-continue). Newest first.
+Phase-0 and cross-cutting decisions that **both** developers rely on live here (ids `D-NN`, newest
+first). Each developer's *own* ongoing decisions live in a separate file so the two never edit the
+same list (no merge conflicts):
 
-<<<<<<< HEAD
-- **D-19 (SAST name resolution never guesses):** `resolve_call` / `ProjectIndex.canonical` return a
-  project qualname, an external dotted name (`os.system`, `flask.request.args.get`) or `builtins.<name>`,
-  and **None** for local variables (unless the call graph supplies a tracked instance type), computed
-  callees (`getattr(...)()`, `f()()`), and names that point into the project but are defined nowhere.
-  Imports inside `except ImportError:` never shadow the `try:` import; a bare name that is not
-  defined, imported or builtin is attributed to the module's single external star import.
-- **D-18 (SAST module names + absolute-import fallback):** module name = dotted path relative to the
-  source root (`pkg/__init__.py` → `pkg`; `pkg.py` loses to `pkg/__init__.py`, as in Python); when the
-  root itself has an `__init__.py` and an identifier name, that name prefixes every module. An absolute
-  import resolves as written first; if that is not a project module it is retried relative to the
-  importing file's package chain, closest first (apps started from their own directory import siblings
-  as top-level names). Standard-library names (`sys.stdlib_module_names`) never take that fallback.
+- Dev A (Person 1): [`DECISIONS_Dev1.md`](DECISIONS_Dev1.md), ids `A-NN`.
+- Dev B (Person 2): [`DECISIONS_Dev2.md`](DECISIONS_Dev2.md), ids `B-NN`.
 
-=======
-- **D-19 (SQLi check, P1-B4):** error-based evidence **short-circuits** the boolean-differential
-  probe — when an error fires we report it at confidence 0.9 and skip the ~12 extra differential
-  requests, rather than running both to claim the spec's combined 0.95 (revisit in P4 tuning if the
-  extra signal is worth the requests). The differential is also skipped when the baseline is
-  *unstable* (can't trust the comparison), and error-based is skipped when the benign baseline page
-  already contains a SQL-error string (can't attribute it). Payloads are exactly Appendix B; a test
-  (`tests/test_checks.py::test_only_appendix_b_payloads_are_sent`) asserts nothing else is sent (R4).
-- **D-18 (scope guard semantics, P0-B1):** (a) `ALLOWED_HOSTS` env **replaces** the base allow-list
-  rather than extending it (matches the `DastConfig.allowed_hosts` "env overrides" note and the
-  SETUP/`make bench` usage, which list `localhost,127.0.0.1,::1` explicitly); `--allow-host` extras
-  merge on top and log a WARNING. A stray empty/whitespace `ALLOWED_HOSTS=` is treated as unset (keeps
-  the default) so it never refuses every target. (b) Matching is a pure string allow-list on the URL's
-  parsed hostname — we **never resolve DNS** (R3), so an unlisted name is refused even if it would
-  resolve to loopback/private. (c) IP *literals* are compared canonically via stdlib `ipaddress`
-  (so `::1` == `0:0:0:0:0:0:0:1`), which resolves nothing; host names match exactly (no subdomain
-  wildcards), case/port/trailing-dot normalised. Non-http(s) schemes and host-less URLs are refused.
->>>>>>> b/phase-1
+Shared-contract changes additionally go through [`CONTRACT_CHANGES.md`](CONTRACT_CHANGES.md) with the
+other dev's ACK. When a decision genuinely affects both of us, add it here (and ping the other dev);
+otherwise record it in your own file.
+
 - **D-17 (git writes hard-blocked for the agent):** the no-auto-push rule is now enforced
   mechanically, not just documented. A PreToolUse hook (`.kiro/hooks/block-git-writes.json`, matcher
   `bash`) runs `scripts/git_guard.py`, which exits 2 (block) on any agent shell command that invokes

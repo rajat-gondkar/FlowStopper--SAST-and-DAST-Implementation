@@ -1,0 +1,9 @@
+<!doctype html>
+<html>
+  <head><title>Product {{ pid }} — ShopLite A</title></head>
+  <body>
+    <h1>Product {{ pid }}</h1>
+    <!-- M04 (CWE-79): the note is rendered unescaped with the |safe filter -->
+    <div class="note">{{ note|safe }}</div>
+  </body>
+</html>

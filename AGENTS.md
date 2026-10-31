@@ -14,7 +14,10 @@ of AI tools is disclosed in `THIRD_PARTY.md`, rule R2.)
   changes are additive only and go through `docs/CONTRACT_CHANGES.md` with the other dev's ACK.
 - **Dev A must not read `apps/mock_b/`** until Phase 6 (held-out generalisation test).
 - **Every task ends green:** run `make check` (ruff + pytest). Never merge or move on with a failing
-  check. Then update `docs/PROGRESS.md` (one line) and log any judgement call in `docs/DECISIONS.md`.
+  check. Then add one line to **your own** progress file (`docs/PROGRESS_Dev1.md` for Dev A,
+  `docs/PROGRESS_Dev2.md` for Dev B) and log any judgement call in **your own** decisions file
+  (`docs/DECISIONS_Dev1.md`, ids `A-NN` / `docs/DECISIONS_Dev2.md`, ids `B-NN`). Per-dev files avoid
+  merge conflicts; joint/Phase-0 decisions live in the shared `docs/DECISIONS.md`.
 - **Compliance rules R1–R8 are enforced by tests, not just docs** (see spec §2). Don't weaken a test
   to make it pass. In particular:
   - R3 scope guard: every DAST request goes through `scope.py`.
@@ -46,4 +49,5 @@ The organisers prescribe no key/report format (judges verify by reading). We use
 don't over-engineer formatting.
 
 ## When a spec detail is ambiguous
-Pick the simpler option, add one line to `docs/DECISIONS.md`, and continue. Don't block.
+Pick the simpler option, add one line to your own decisions file (`docs/DECISIONS_Dev1.md` or
+`docs/DECISIONS_Dev2.md`), and continue. Don't block.

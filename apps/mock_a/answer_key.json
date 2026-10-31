@@ -1,0 +1,144 @@
+{
+  "schema_version": "1",
+  "app": "shoplite-a",
+  "language": "python",
+  "framework": "flask",
+  "base_url": "http://localhost:5050",
+  "vulns": [
+    {
+      "id": "M01",
+      "cwe": 89,
+      "kind": "pair",
+      "title": "SQL injection in order lookup (cross-file: db.fetch_order builds SQL with an f-string)",
+      "code": {"file": "db.py", "line_start": 21, "line_end": 22, "function": "db.fetch_order"},
+      "runtime": {"method": "GET", "path": "/api/orders", "param": "id"},
+      "notes": "request.args id -> db.fetch_order (another module) -> f-string into conn.execute."
+    },
+    {
+      "id": "M02",
+      "cwe": 89,
+      "kind": "pair",
+      "title": "SQL injection in login (username concatenated into SQL in db.find_user)",
+      "code": {"file": "db.py", "line_start": 28, "line_end": 29, "function": "db.find_user"},
+      "runtime": {"method": "POST", "path": "/login", "param": "username"},
+      "notes": "POST /login form 'username' -> db.find_user -> string concatenation into conn.execute."
+    },
+    {
+      "id": "M03",
+      "cwe": 79,
+      "kind": "pair",
+      "title": "Reflected XSS in /search (request value returned in an f-string HTML page)",
+      "code": {"file": "blueprints/users.py", "line_start": 59, "line_end": 59, "function": "blueprints.users.search"},
+      "runtime": {"method": "GET", "path": "/search", "param": "q"}
+    },
+    {
+      "id": "M04",
+      "cwe": 79,
+      "kind": "pair",
+      "title": "Stored-in-template XSS: note rendered with |safe in product.html",
+      "code": {"file": "blueprints/users.py", "line_start": 72, "line_end": 73, "function": "blueprints.users.product"},
+      "runtime": {"method": "GET", "path": "/product/<id>", "param": "note"},
+      "notes": "render_template('product.html', note=...) where the template renders {{ note|safe }} (templates/product.html:7)."
+    },
+    {
+      "id": "M05",
+      "cwe": 78,
+      "kind": "pair",
+      "title": "Command injection in /api/ping (host -> os.system in utils.shell.ping_host)",
+      "code": {"file": "utils/shell.py", "line_start": 13, "line_end": 13, "function": "utils.shell.ping_host"},
+      "runtime": {"method": "GET", "path": "/api/ping", "param": "host"}
+    },
+    {
+      "id": "M06",
+      "cwe": 78,
+      "kind": "pair",
+      "title": "Command injection in /admin/backup (name -> subprocess.run(shell=True))",
+      "code": {"file": "blueprints/admin.py", "line_start": 14, "line_end": 14, "function": "blueprints.admin.backup"},
+      "runtime": {"method": "POST", "path": "/admin/backup", "param": "name"}
+    },
+    {
+      "id": "M07",
+      "cwe": 22,
+      "kind": "pair",
+      "title": "Path traversal in /download (file joined onto BASE_DIR and opened)",
+      "code": {"file": "blueprints/files.py", "line_start": 32, "line_end": 33, "function": "blueprints.files.download"},
+      "runtime": {"method": "GET", "path": "/download", "param": "file"}
+    },
+    {
+      "id": "M08",
+      "cwe": 22,
+      "kind": "pair",
+      "title": "Path traversal in /docs/<path:name> (name passed to send_file)",
+      "code": {"file": "blueprints/files.py", "line_start": 40, "line_end": 40, "function": "blueprints.files.docs"},
+      "runtime": {"method": "GET", "path": "/docs/<path:name>", "param": "name"}
+    },
+    {
+      "id": "M09",
+      "cwe": 601,
+      "kind": "pair",
+      "title": "Open redirect in /go (next reflected into redirect())",
+      "code": {"file": "blueprints/users.py", "line_start": 80, "line_end": 80, "function": "blueprints.users.go"},
+      "runtime": {"method": "GET", "path": "/go", "param": "next"}
+    },
+    {
+      "id": "M10",
+      "cwe": 601,
+      "kind": "pair",
+      "title": "Open redirect in post-login redirect (POST /login?next=)",
+      "code": {"file": "blueprints/users.py", "line_start": 51, "line_end": 51, "function": "blueprints.users.login"},
+      "runtime": {"method": "POST", "path": "/login", "param": "next"}
+    },
+    {
+      "id": "C01",
+      "cwe": 798,
+      "kind": "code_only",
+      "title": "Hard-coded Flask SECRET_KEY",
+      "code": {"file": "config.py", "line_start": 12, "line_end": 12}
+    },
+    {
+      "id": "C02",
+      "cwe": 798,
+      "kind": "code_only",
+      "title": "Hard-coded database password",
+      "code": {"file": "config.py", "line_start": 15, "line_end": 15}
+    },
+    {
+      "id": "C03",
+      "cwe": 798,
+      "kind": "code_only",
+      "title": "Hard-coded payment API token",
+      "code": {"file": "utils/payments.py", "line_start": 9, "line_end": 9}
+    },
+    {
+      "id": "R01",
+      "cwe": 693,
+      "kind": "runtime_only",
+      "title": "Missing security headers (no CSP / X-Frame-Options / X-Content-Type-Options), host-wide",
+      "runtime": {"path": "*", "param": null}
+    },
+    {
+      "id": "R02",
+      "cwe": 1004,
+      "kind": "runtime_only",
+      "title": "Session cookie without HttpOnly / SameSite",
+      "runtime": {"path": "*", "param": null}
+    },
+    {
+      "id": "R03",
+      "cwe": 209,
+      "kind": "runtime_only",
+      "title": "Verbose error / traceback exposed at /api/crash",
+      "runtime": {"method": "GET", "path": "/api/crash", "param": null}
+    }
+  ],
+  "decoys": [
+    {"id": "D01", "cwe": 89, "file": "db.py", "line_start": 32, "line_end": 35, "reason": "parameterised query with a bound placeholder"},
+    {"id": "D02", "cwe": 89, "file": "db.py", "line_start": 38, "line_end": 42, "reason": "value cast to int before use in SQL"},
+    {"id": "D03", "cwe": 79, "file": "blueprints/users.py", "line_start": 66, "line_end": 66, "reason": "html.escape before returning HTML"},
+    {"id": "D04", "cwe": 78, "file": "utils/shell.py", "line_start": 18, "line_end": 18, "reason": "subprocess list form with shell=False"},
+    {"id": "D05", "cwe": 22, "file": "blueprints/files.py", "line_start": 46, "line_end": 47, "reason": "secure_filename + send_from_directory"},
+    {"id": "D06", "cwe": 601, "file": "blueprints/users.py", "line_start": 86, "line_end": 90, "reason": "redirect target checked against an allow-list"},
+    {"id": "D07", "cwe": 79, "file": "blueprints/products.py", "line_start": 42, "line_end": 42, "reason": "value reflected as JSON, not HTML"},
+    {"id": "D08", "cwe": 798, "file": "config.py", "line_start": 20, "line_end": 20, "reason": "secret read from os.environ"}
+  ]
+}

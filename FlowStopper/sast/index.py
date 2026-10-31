@@ -6,7 +6,7 @@ standard-library `ast` module. Nothing from the scanned project is imported, com
 Names
     Module names are dotted paths relative to the source root: `pkg/mod.py` -> `pkg.mod`,
     `pkg/__init__.py` -> `pkg`. When the root itself is a package (it has an `__init__.py` and its
-    directory name is an identifier) that name prefixes every module (DECISIONS D-18).
+    directory name is an identifier) that name prefixes every module (DECISIONS A-01).
     Qualified names follow lexical nesting: `pkg.mod.func`, `pkg.mod.Class.method`,
     `pkg.mod.outer.inner`.
 
@@ -15,7 +15,7 @@ Resolution
     module-level aliases to the qualname that defines a symbol. Names outside the project come back as
     their external dotted name (`os.system`, `flask.request`); builtins as `builtins.<name>`.
     `resolve_call(call, module_ctx)` resolves the callee of an `ast.Call`. Local variables, attributes
-    of unknown objects and computed callees resolve to None: the index never guesses (DECISIONS D-19).
+    of unknown objects and computed callees resolve to None: the index never guesses (DECISIONS A-02).
 """
 
 from __future__ import annotations
@@ -397,7 +397,7 @@ class ProjectIndex:
         """Resolve an absolute import name: as written first, else relative to the importing file's packages.
 
         The fallback covers apps started from their own directory (`python app.py`, `flask run`), where
-        sibling modules are imported as top-level names (DECISIONS D-18). Standard-library names never
+        sibling modules are imported as top-level names (DECISIONS A-01). Standard-library names never
         take the fallback, so `utils/email.py` does not shadow `import email`.
         """
         if not name or self._is_project_module(name) or name.split(".")[0] in STDLIB_MODULES:
