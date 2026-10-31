@@ -8,6 +8,7 @@ only Appendix B payloads leave the tool (R4).
 
 from __future__ import annotations
 
+import hashlib
 import random
 import string
 from dataclasses import dataclass, field
@@ -91,6 +92,17 @@ class CheckContext:
     def create(cls, client: DastClient, base_url: str, config: DastConfig | None = None) -> CheckContext:
         config = config or DastConfig()
         return cls(client, base_url, config, random.Random(config.seed if config.seed is not None else 0))
+
+    def derive(self, key: str) -> CheckContext:
+        """Child context whose RNG is seeded from (scan seed, `key`) - shares the client and audit log.
+
+        The runner gives each (endpoint, param) unit its own derived context so canaries depend on
+        *which* unit is being tested, never on concurrent scheduling order. Without this, two runs of
+        the same scan would record different payloads in the evidence (spec rule 7: determinism).
+        """
+        material = f"{self.config.seed if self.config.seed is not None else 0}|{key}".encode()
+        rng = random.Random(hashlib.sha256(material).hexdigest())
+        return CheckContext(self.client, self.base_url, self.config, rng, {}, self.sent_payloads)
 
     def token(self, n: int = 7) -> str:
         """A per-scan random lowercase canary (the `sdcRND` token in Appendix B)."""

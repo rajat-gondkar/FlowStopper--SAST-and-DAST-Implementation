@@ -19,7 +19,7 @@ from FlowStopper.models import Finding
 CWE = 89
 
 # Spec Appendix B error signatures (DB drivers / messages). Must be absent from the baseline.
-_SQL_ERRORS = re.compile(
+SQL_ERRORS = re.compile(
     r"(sqlite3\.OperationalError|SQLITE_ERROR|unrecognized token|near \"|syntax error at or near|"
     r"You have an error in your SQL syntax|psycopg2|pymysql|ORA-\d{5}|SQLSTATE|"
     r"Unclosed quotation mark|OperationalError|ProgrammingError)",
@@ -34,7 +34,7 @@ async def _error_based(
     for suffix in _ERROR_SUFFIXES:
         payload = orig + suffix
         ex = await ctx.send(endpoint, param, payload)
-        m = _SQL_ERRORS.search(ex.body)
+        m = SQL_ERRORS.search(ex.body)
         if m:
             return ex, payload, m.group(0)
     return None
@@ -76,7 +76,7 @@ async def run(ctx: CheckContext, endpoint: Endpoint, param: Param) -> list[Findi
     baseline = await ctx.baseline(endpoint, param)
 
     # error-based (skipped if the benign page already shows a SQL error - cannot attribute it)
-    error_hit = None if _SQL_ERRORS.search(baseline.sample.body) else await _error_based(ctx, endpoint, param, orig)
+    error_hit = None if SQL_ERRORS.search(baseline.sample.body) else await _error_based(ctx, endpoint, param, orig)
     if error_hit:
         ex, payload, matched = error_hit
         evidence = (

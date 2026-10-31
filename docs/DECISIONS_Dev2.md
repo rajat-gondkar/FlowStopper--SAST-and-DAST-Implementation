@@ -12,6 +12,61 @@ prefix keeps our ids from ever colliding with Dev A's `A-` ids.
 > citation in `correlate/issues.py` is correct: D-12 is a *shared* Phase-0 decision and still lives in
 > [`DECISIONS.md`](DECISIONS.md).
 
+- **B-07 (Mock B held-out hygiene, P2-B7)** — _(a) ratified 2026-10-31; keep as implemented_:
+  (a) Mock B's verification lives in `apps/mock_b/selfcheck.py`, **not** under `tests/`, to preserve
+  held-out isolation until Phase 6 — `make check` collects only `tests/`, and a test file there would
+  expose the sealed contents to Dev A early. It asserts all 16 planted
+  bugs fire *and* all 8 decoys stay safe, plus a baseline query, because the first draft "passed" its
+  SQLi checks only because the schema was missing and every query raised `OperationalError`.
+  **Run it manually** for now: `.venv/bin/python -m apps.mock_b.selfcheck` (documented in
+  `apps/mock_b/README.md`). Accepted trade-off: it is not gated by `make check`, so it can rot
+  silently; the mitigation is to run it whenever Mock B changes and at the Phase 6 unsealing.
+  **Follow-up:** once Mock B is unsealed in Phase 6, promote the suitable checks into `tests/` so CI
+  guards them — tracked as a Phase 6 item in `PERSON_2_DEV_B.md`. Until then, nothing about Mock B
+  moves into `tests/`.
+  (b) `answer_key.json` is **generated** from `# vuln:<id>` / `# decoy:<id>` markers next to the
+  offending lines (`build_key.py`), so line numbers cannot drift from the code - a stale number
+  silently converts a real detection into a miss. (c) Template XSS records the Python render call as
+  its code location with the template named in `notes`, matching Dev A's Mock A convention (M04).
+- **B-06 (correlator semantics, P2-B6):** choices forced by reproducing `expected_issues.json`.
+  (a) **Specificity** is 1.0 only when the taint has *both* a call chain and a named source param,
+  else 0.5 - that is what makes the two sibling report sinks score 0.80 and tie. (b) `link_score` is
+  **derived from the sum of the reason weights** rather than computed separately, so the B-3
+  explanation can never disagree with the score (`tests/test_fixtures.py` asserts they reconcile).
+  (c) Specificity has no reason kind in the frozen contract, so it is folded into the route reason's
+  weight and named in its text; a partial param match reuses the `same_param` kind with explanatory
+  text for the same reason. (d) The ambiguity margin compares a **rounded** difference: in binary
+  floats a genuine 0.10 gap (1.0 vs 0.9) computes as 0.0999...8 and would be misread as a tie,
+  losing a legitimate link. (e) Issue titles are derived generically - the credential name for
+  CWE-798 is parsed out of the SAST finding's own title, and host-wide runtime issues keep the
+  check's wording plus "(host-wide)"; no app-specific strings enter `FlowStopper/` (R6).
+- **B-05 (runner budget + determinism, P2-B4)** — _(a) ratified 2026-10-31; keep as implemented_:
+  (a) The **240 s default budget covers the active checks only.** Discovery and the single host-wide
+  passive pass run first and are deliberately not interruptible. The budget is taken **literally** —
+  0 means no time is left, so the active phase is skipped rather than being clamped to a silent grace
+  period. On expiry the runner stops active checks **gracefully** (checked before each unit and
+  before each check within a unit), **preserves everything already collected** — passive findings and
+  the active findings from units that finished or partly finished — and records
+  `stats["truncated"] = True`. Consequence, accepted: **total scan wall-clock can exceed 240 s**
+  (discovery + passive + the in-flight unit that is allowed to finish). That is fine because the
+  budget is *our own* operational limit for bounding the active phase, **not** a PRD requirement; the
+  PRD only sets the end-to-end run-time targets in spec §4 (&lt; 15 min good / &lt; 5 min great), which
+  `scan_meta.json` reports per stage. Verified by
+  `tests/test_dast_runner.py::test_time_budget_truncates_cleanly` (zero budget keeps the passive
+  findings and flags truncation) and `::test_expired_deadline_stops_a_unit_before_it_sends_anything`
+  (a spent deadline sends no payload at all).
+  (b) Each (endpoint, param) unit derives its **own** RNG from `(seed, endpoint, param)`
+  (`CheckContext.derive`), because a single shared RNG would make the recorded payloads depend on
+  concurrent scheduling order - two runs of the same scan would differ (spec rule 7). (c) DELETE is
+  removed from the allowed set unconditionally, so no configuration can reach it (R4).
+- **B-04 (passive check precision, P2-B2):** (a) A missing `Secure` cookie flag and missing HSTS are
+  reported **only over HTTPS** - on a plain-HTTP dev target every cookie would be flagged, which is
+  noise rather than a finding. `HttpOnly` and `SameSite` are always reported. (b) `/robots.txt` is
+  emitted at confidence 0.3 and labelled informational (spec lists it as info-only); `/.git/HEAD` and
+  `/.env` are real findings at 0.9/0.8. (c) Host-wide findings are anchored to the `/` exchange with
+  every affected path in `evidence` and `raw["affected_paths"]`, so they appear **once per host**.
+  (d) Added `HttpExchange.set_cookies` (additive, my own file): `response_headers` is a plain dict and
+  silently collapses repeated `Set-Cookie` headers, which would hide every cookie but the last.
 - **B-03 (payload fidelity + evidence guards, P2-B1):** (a) Appendix B's pre-encoded traversal
   variant `..%2f..%2fetc%2fpasswd` cannot go through httpx's `params=`, which re-encodes the `%` and
   would send `..%252f` — the target would only ever see a literal `%2f`, testing nothing. Added

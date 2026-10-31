@@ -17,6 +17,15 @@ Stage boundaries are the pydantic models in `FlowStopper/models.py`. Entry point
 `sast.runner.run_sast` (A), `dast.runner.run_dast` (B), `correlate.engine.correlate` (B), tied
 together by `pipeline.py` (A).
 
+**DAST ordering and budget scope.** Inside the DAST stage the order is fixed: scope-check the target,
+discover endpoints (route-map seeded, then crawl), run the host-wide passive checks **once**, then
+run the active checks per (endpoint, injectable parameter) — route-map endpoints first, Appendix B
+priority parameter names first. The `--time-budget` (default 240 s) governs **only that last, active
+phase**: discovery and the passive pass run first and are not interruptible. On expiry the runner
+stops scheduling active checks, keeps everything already collected (passive findings included) and
+sets `stats.truncated = true`, so total DAST wall-clock can exceed the budget by design (see
+`docs/LIMITATIONS.md` and decision B-05).
+
 ## Correlation algorithm (the judged core)
 
 For a runtime finding `r` and a code finding `c` with `same_family(r.cwe, c.cwe)` and `c` not

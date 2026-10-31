@@ -1,0 +1,339 @@
+{
+  "schema_version": "1",
+  "app": "shoplite-b",
+  "language": "python",
+  "framework": "fastapi",
+  "base_url": "http://127.0.0.1:8090",
+  "vulns": [
+    {
+      "id": "B01",
+      "cwe": 89,
+      "kind": "pair",
+      "title": "SQL injection in the catalogue search (fragment interpolated into SQL one layer down)",
+      "code": {
+        "file": "repositories/catalogue_repo.py",
+        "line_start": 17,
+        "line_end": 18,
+        "function": "repositories.catalogue_repo.search_items"
+      },
+      "runtime": {
+        "method": "GET",
+        "path": "/catalogue/items",
+        "param": "fragment"
+      },
+      "notes": "router routers/catalogue.py:list_items passes the query value to repositories.catalogue_repo.search_items, which builds the statement with an f-string (cross-module). Route entry: routers/catalogue.py:23."
+    },
+    {
+      "id": "B02",
+      "cwe": 89,
+      "kind": "pair",
+      "title": "SQL injection in sign-in (JSON body handle concatenated into SQL)",
+      "code": {
+        "file": "repositories/account_repo.py",
+        "line_start": 13,
+        "line_end": 14,
+        "function": "repositories.account_repo.authenticate"
+      },
+      "runtime": {
+        "method": "POST",
+        "path": "/accounts/signin",
+        "param": "handle"
+      },
+      "notes": "pydantic body field `handle` reaches repositories.account_repo.authenticate, which concatenates it into the statement. JSON body parameter, not a form field. Route entry: routers/accounts.py:26."
+    },
+    {
+      "id": "B03",
+      "cwe": 79,
+      "kind": "pair",
+      "title": "Reflected XSS in the catalogue lookup (term pasted into an HTMLResponse)",
+      "code": {
+        "file": "routers/catalogue.py",
+        "line_start": 30,
+        "line_end": 31,
+        "function": "routers.catalogue.lookup"
+      },
+      "runtime": {
+        "method": "GET",
+        "path": "/catalogue/lookup",
+        "param": "term"
+      },
+      "notes": "the term is interpolated into markup returned as HTMLResponse, so the raw characters survive."
+    },
+    {
+      "id": "B04",
+      "cwe": 79,
+      "kind": "pair",
+      "title": "Template XSS: label rendered with |safe in detail.html",
+      "code": {
+        "file": "routers/catalogue.py",
+        "line_start": 55,
+        "line_end": 56,
+        "function": "routers.catalogue.detail"
+      },
+      "runtime": {
+        "method": "GET",
+        "path": "/catalogue/detail/{sku}",
+        "param": "label"
+      },
+      "notes": "TemplateResponse('detail.html', label=...) where the template renders {{ label|safe }} (templates/detail.html). Code location points at the Python render call, as in Mock A's M04."
+    },
+    {
+      "id": "B05",
+      "cwe": 78,
+      "kind": "pair",
+      "title": "Command injection in the diagnostics endpoint (os.system)",
+      "code": {
+        "file": "services/net.py",
+        "line_start": 12,
+        "line_end": 13,
+        "function": "services.net.probe_endpoint"
+      },
+      "runtime": {
+        "method": "GET",
+        "path": "/ops/diagnose",
+        "param": "endpoint"
+      },
+      "notes": "routers/ops.py:diagnose calls services.net.probe_endpoint, which passes the value to os.system inside an f-string (cross-module). Route entry: routers/ops.py:25."
+    },
+    {
+      "id": "B06",
+      "cwe": 78,
+      "kind": "pair",
+      "title": "Command injection in the archive endpoint (subprocess shell=True)",
+      "code": {
+        "file": "services/archive.py",
+        "line_start": 14,
+        "line_end": 15,
+        "function": "services.archive.snapshot"
+      },
+      "runtime": {
+        "method": "POST",
+        "path": "/ops/archive",
+        "param": "tag"
+      },
+      "notes": "JSON body field `tag` reaches services.archive.snapshot, which runs a shell command string. Route entry: routers/ops.py:31."
+    },
+    {
+      "id": "B07",
+      "cwe": 22,
+      "kind": "pair",
+      "title": "Path traversal in the asset reader (os.path.join + open, no containment check)",
+      "code": {
+        "file": "routers/assets.py",
+        "line_start": 20,
+        "line_end": 21,
+        "function": "routers.assets.fetch"
+      },
+      "runtime": {
+        "method": "GET",
+        "path": "/assets/fetch",
+        "param": "doc"
+      },
+      "notes": "an absolute payload also works because os.path.join discards the base when the second part is absolute."
+    },
+    {
+      "id": "B08",
+      "cwe": 22,
+      "kind": "pair",
+      "title": "Path traversal in the raw asset route (path converter into FileResponse)",
+      "code": {
+        "file": "routers/assets.py",
+        "line_start": 32,
+        "line_end": 33,
+        "function": "routers.assets.raw"
+      },
+      "runtime": {
+        "method": "GET",
+        "path": "/assets/raw/{name}",
+        "param": "name"
+      },
+      "notes": "the {name:path} converter keeps separators, so an encoded traversal reaches FileResponse."
+    },
+    {
+      "id": "B09",
+      "cwe": 601,
+      "kind": "pair",
+      "title": "Open redirect in the bounce endpoint (unvalidated RedirectResponse target)",
+      "code": {
+        "file": "routers/accounts.py",
+        "line_start": 39,
+        "line_end": 40,
+        "function": "routers.accounts.bounce"
+      },
+      "runtime": {
+        "method": "GET",
+        "path": "/accounts/bounce",
+        "param": "onward"
+      },
+      "notes": "no allow-list; protocol-relative and absolute off-site targets are both honoured."
+    },
+    {
+      "id": "B10",
+      "cwe": 601,
+      "kind": "pair",
+      "title": "Open redirect after sign-in (post-authentication onward target)",
+      "code": {
+        "file": "routers/accounts.py",
+        "line_start": 29,
+        "line_end": 30,
+        "function": "routers.accounts.signin"
+      },
+      "runtime": {
+        "method": "POST",
+        "path": "/accounts/signin",
+        "param": "onward"
+      },
+      "notes": "same route as B02 but a different parameter: the redirect is only reachable with valid credentials (avery / pepper-ridge)."
+    },
+    {
+      "id": "B21",
+      "cwe": 798,
+      "kind": "code_only",
+      "title": "Hard-coded session signing secret",
+      "code": {
+        "file": "config.py",
+        "line_start": 17,
+        "line_end": 18
+      },
+      "notes": "literal assigned to SIGNING_SECRET in config.py."
+    },
+    {
+      "id": "B22",
+      "cwe": 798,
+      "kind": "code_only",
+      "title": "Hard-coded warehouse database password",
+      "code": {
+        "file": "config.py",
+        "line_start": 20,
+        "line_end": 21
+      },
+      "notes": "literal password, also embedded in the DSN string on the following line."
+    },
+    {
+      "id": "B23",
+      "cwe": 798,
+      "kind": "code_only",
+      "title": "Hard-coded vendor pricing feed token",
+      "code": {
+        "file": "services/pricing.py",
+        "line_start": 6,
+        "line_end": 7
+      },
+      "notes": "literal token in the pricing service, used to build an Authorization header."
+    },
+    {
+      "id": "B31",
+      "cwe": 693,
+      "kind": "runtime_only",
+      "title": "Missing security headers on every response (no CSP, X-Frame-Options, nosniff, Referrer-Policy)",
+      "runtime": {
+        "method": "GET",
+        "path": "*",
+        "param": null
+      },
+      "notes": "host-wide: the app sets no security headers anywhere."
+    },
+    {
+      "id": "B32",
+      "cwe": 1004,
+      "kind": "runtime_only",
+      "title": "Session cookie set without HttpOnly, Secure or SameSite",
+      "runtime": {
+        "method": "POST",
+        "path": "/accounts/signin",
+        "param": null
+      },
+      "notes": "set on the sign-in response; needs valid credentials (avery / pepper-ridge) to observe."
+    },
+    {
+      "id": "B33",
+      "cwe": 209,
+      "kind": "runtime_only",
+      "title": "Verbose error page returns a full Python traceback",
+      "runtime": {
+        "method": "GET",
+        "path": "/ops/boom",
+        "param": null
+      },
+      "notes": "the global exception handler renders traceback.format_exception to the client."
+    },
+    {
+      "id": "B34",
+      "cwe": 497,
+      "kind": "runtime_only",
+      "title": "Server banner discloses the application version",
+      "runtime": {
+        "method": "GET",
+        "path": "*",
+        "param": null
+      },
+      "notes": "host-wide: a middleware stamps a versioned Server header on every response."
+    }
+  ],
+  "decoys": [
+    {
+      "id": "D01",
+      "cwe": 89,
+      "file": "repositories/catalogue_repo.py",
+      "line_start": 28,
+      "line_end": 29,
+      "reason": "parameterised query with a bound placeholder"
+    },
+    {
+      "id": "D02",
+      "cwe": 89,
+      "file": "repositories/catalogue_repo.py",
+      "line_start": 39,
+      "line_end": 40,
+      "reason": "value cast to int before use in SQL"
+    },
+    {
+      "id": "D03",
+      "cwe": 79,
+      "file": "routers/catalogue.py",
+      "line_start": 38,
+      "line_end": 39,
+      "reason": "html.escape before returning HTML"
+    },
+    {
+      "id": "D04",
+      "cwe": 78,
+      "file": "services/net.py",
+      "line_start": 23,
+      "line_end": 24,
+      "reason": "subprocess argument vector with shell=False"
+    },
+    {
+      "id": "D05",
+      "cwe": 22,
+      "file": "routers/assets.py",
+      "line_start": 42,
+      "line_end": 43,
+      "reason": "os.path.basename plus a resolved-root containment check"
+    },
+    {
+      "id": "D06",
+      "cwe": 601,
+      "file": "routers/accounts.py",
+      "line_start": 46,
+      "line_end": 47,
+      "reason": "redirect target checked against an allow-list"
+    },
+    {
+      "id": "D07",
+      "cwe": 79,
+      "file": "routers/catalogue.py",
+      "line_start": 46,
+      "line_end": 47,
+      "reason": "value reflected as JSON, not HTML"
+    },
+    {
+      "id": "D08",
+      "cwe": 798,
+      "file": "config.py",
+      "line_start": 24,
+      "line_end": 25,
+      "reason": "credential read from os.environ"
+    }
+  ]
+}
