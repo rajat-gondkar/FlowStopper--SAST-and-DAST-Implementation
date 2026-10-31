@@ -74,7 +74,41 @@ JSON Schema is exported to `docs/schemas/answer_key.schema.json`.
 
 ## Converting the organisers' key (Phase 3)
 
-Write `FlowStopper/evalkit/convert_organiser_key.py` to read their format (once known) and emit this
-schema to `keys/answer_key.json`. Keep the raw input **out of git** (it lives under the git-ignored
-`keys/`). The counts to expect on the real app (spec §4): 36 planted = 20 pairs + 10 code-only + 6
-runtime-only, plus ~8 safe decoys.
+`FlowStopper/evalkit/convert_organiser_key.py` converts their key into this schema. Their format is
+not known in advance, so the converter is **mapping-driven**: it reads CSV, or JSON (a list, or an
+object holding a list under `vulns`/`vulnerabilities`/`findings`/`items`/`entries`, plus an optional
+`decoys` list), finds each field through common column names, and validates the result before
+writing it.
+
+```bash
+# keep BOTH files under the git-ignored keys/ (rule R5); the converter warns otherwise
+python -m FlowStopper.evalkit.convert_organiser_key keys/organisers_raw.csv -o keys/answer_key.json \
+    --app organisers-app --strip-prefix app
+# a column it did not recognise: name it explicitly instead of editing code
+python -m FlowStopper.evalkit.convert_organiser_key keys/raw.json --map cwe=VulnClass --map file=Src
+make validate-key KEY=keys/answer_key.json
+```
+
+What it normalises: CWE from `89`, `CWE-89` or a type name (`SQL Injection`, `XSS`, ...); code
+location from separate file/line columns or one `path/file.py:80-95` value (Windows separators and a
+`--strip-prefix` source root removed); runtime path from a path column or a full URL (query dropped;
+`*`/`any`/`all` → host-wide); `kind` from which locations are present; rows whose status column says
+`decoy`/`safe`/`false positive` (or a truthy `is_decoy`) become decoys. An unreadable CWE or a file
+without a line number is an error naming the row, never a silent skip.
+
+The counts to expect on the real app (spec §4): 36 planted = 20 pairs + 10 code-only + 6
+runtime-only, plus ~8 safe decoys. Check the converter's summary line against those.
+
+## Scoring a scan
+
+```bash
+FlowStopper eval --key keys/answer_key.json --scan latest          # newest completed scan in the store
+FlowStopper eval --key keys/answer_key.json --scan <scan-id>       # a specific scan (see `scan` output)
+FlowStopper eval --key keys/answer_key.json --issues out/issues.json   # a file; reads scan_meta.json beside it
+```
+
+The table shows each §4 metric with its Good/Great target and a status (`great`/`good`/`below`, or
+`n/a` when the denominator is 0 — e.g. no Confirmed issues, so the wrong-link rate means nothing).
+The report is written to `docs/metrics/<timestamp>.json` unless `--out` is given. It contains counts,
+rates, the scan id and run time only — no file paths, routes or findings from the scanned app — so a
+report for the organisers' app is safe to commit.

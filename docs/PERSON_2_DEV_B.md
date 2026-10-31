@@ -98,9 +98,13 @@ imports your command functions).
 
 ## Phase 3 — integration (8:00–9:30, joint)
 
-- [ ] **P3-B1 · `eval` on the real app** — `FlowStopper eval --key keys/answer_key.json --scan <id>`
+- [x] **P3-B1 · `eval` on the real app** — `FlowStopper eval --key keys/answer_key.json --scan <id>`
   prints the §4 table and writes `docs/metrics/<ts>.json`. Write `evalkit/convert_organiser_key.py`
   (git-ignored input) to convert the organisers' key into our Appendix C format once it's known.
+  *Done (2026-10-31): `eval --scan <id|latest>` reads the stored scan, the table shows Good/Great
+  targets, status and run time, and the converter is in place. Exercised live on Mock A. **Running it
+  on the organisers' app is still pending** — `target_src/` and `keys/` are empty until they release
+  the app; when they do, convert the key, scan, then `eval --scan latest` (P3-J1 baseline).*
 - [ ] **P3-J2 (joint)** triage into `docs/BACKLOG.md` ordered by metric impact.
 
 ## Phase 4 — DAST + correlator tuning & bonuses (9:30–12:30)

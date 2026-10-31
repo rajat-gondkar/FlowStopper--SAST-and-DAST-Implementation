@@ -169,28 +169,122 @@ def compute_metrics(issues: list[Issue], key: AnswerKey) -> dict:
     }
 
 
-def format_metrics_table(m: dict) -> str:
-    """Render the section 4 metrics as a compact fixed-width table (deterministic)."""
-    cd, rd, cl, wl, fa = (
-        m["code_detection"],
-        m["runtime_detection"],
-        m["correct_links"],
-        m["wrong_links"],
-        m["false_alarms"],
-    )
+# --------------------------------------------------------------------------- section 4 targets
+# The five rate metrics, in the order the spec lists them.
+METRIC_KEYS = ("code_detection", "runtime_detection", "correct_links", "wrong_links", "false_alarms")
+_LABELS = {
+    "code_detection": "Code detection",
+    "runtime_detection": "Runtime detection",
+    "correct_links": "Correct links",
+    "wrong_links": "Wrong links",
+    "false_alarms": "False alarms",
+    "run_time": "Run time",
+}
+# Numerator / denominator field of each metric's dict.
+_NUMERATOR = {k: ("count" if k in ("wrong_links", "false_alarms") else "found") for k in METRIC_KEYS}
+_DENOMINATOR = {
+    "code_detection": "total",
+    "runtime_detection": "total",
+    "correct_links": "total",
+    "wrong_links": "confirmed",
+    "false_alarms": "reported",
+}
 
-    def pct(x: float) -> str:
-        return f"{x * 100:.1f}%"
+# Spec section 4: (good, great, higher_is_better). Rates are fractions; run time is in seconds.
+# "Unseen app" is not here on purpose: it is the correct-link rate of the held-out app, so it is read
+# off the Correct links row when evaluating that app's scan, not computed from any single scan.
+TARGETS: dict[str, tuple[float, float, bool]] = {
+    "code_detection": (0.60, 0.85, True),
+    "runtime_detection": (0.50, 0.80, True),
+    "correct_links": (0.50, 0.80, True),
+    "wrong_links": (0.20, 0.05, False),
+    "false_alarms": (0.30, 0.10, False),
+    "run_time": (15 * 60.0, 5 * 60.0, False),
+}
 
-    rows = [
-        ("Code detection", f"{cd['found']}/{cd['total']}", pct(cd["rate"])),
-        ("Runtime detection", f"{rd['found']}/{rd['total']}", pct(rd["rate"])),
-        ("Correct links", f"{cl['found']}/{cl['total']}", pct(cl["rate"])),
-        ("Wrong links", f"{wl['count']}/{wl['confirmed']}", pct(wl["rate"])),
-        ("False alarms", f"{fa['count']}/{fa['reported']}", pct(fa["rate"])),
-    ]
-    w = max(len(r[0]) for r in rows)
-    header = f"{'Metric'.ljust(w)}  {'Count':>7}  {'Rate':>7}"
-    sep = f"{'-' * w}  {'-' * 7}  {'-' * 7}"
-    body = [f"{name.ljust(w)}  {count:>7}  {rate:>7}" for name, count, rate in rows]
-    return "\n".join([header, sep, *body])
+
+def _grade(value: float, good: float, great: float, higher_is_better: bool) -> str:
+    """Spec section 4 uses strict comparisons (> 60%, < 20%), so a value exactly on a line misses it."""
+    if higher_is_better:
+        return "great" if value > great else "good" if value > good else "below"
+    return "great" if value < great else "good" if value < good else "below"
+
+
+def assess(metrics: dict, run_time_s: float | None = None) -> dict[str, str]:
+    """Grade each metric against its section 4 target: great / good / below / n/a.
+
+    A metric with an empty denominator is "n/a", not graded: 0 wrong links out of 0 Confirmed issues
+    says nothing about link quality, and rating it "great" would reward linking nothing at all.
+    """
+    out: dict[str, str] = {}
+    for key in METRIC_KEYS:
+        m = metrics[key]
+        if not m[_DENOMINATOR[key]]:
+            out[key] = "n/a"
+            continue
+        good, great, higher = TARGETS[key]
+        out[key] = _grade(m["rate"], good, great, higher)
+    if run_time_s is not None:
+        good, great, higher = TARGETS["run_time"]
+        out["run_time"] = _grade(run_time_s, good, great, higher)
+    return out
+
+
+def _duration(seconds: float) -> str:
+    return f"{seconds:.1f} s" if seconds < 120 else f"{seconds / 60:.1f} min"
+
+
+def _target_text(key: str, threshold: float) -> str:
+    higher = TARGETS[key][2]
+    sign = ">" if higher else "<"
+    if key == "run_time":
+        return f"{sign}{threshold / 60:.0f} min"
+    return f"{sign}{threshold * 100:.0f}%"
+
+
+def format_metrics_table(m: dict, run_time_s: float | None = None) -> str:
+    """Render the section 4 metrics with their Good/Great targets as a fixed-width table.
+
+    `run_time_s` adds the Run time row when the scan's total duration is known. Deterministic: the
+    same metrics always render the same text.
+    """
+    status = assess(m, run_time_s)
+    rows: list[tuple[str, ...]] = []
+    for key in METRIC_KEYS:
+        d = m[key]
+        den = d[_DENOMINATOR[key]]
+        good, great, _ = TARGETS[key]
+        rate = f"{d['rate'] * 100:.1f}%" if den else "-"
+        rows.append(
+            (
+                _LABELS[key],
+                f"{d[_NUMERATOR[key]]}/{den}",
+                rate,
+                _target_text(key, good),
+                _target_text(key, great),
+                status[key],
+            )
+        )
+    if run_time_s is not None:
+        good, great, _ = TARGETS["run_time"]
+        rows.append(
+            (
+                _LABELS["run_time"],
+                "",
+                _duration(run_time_s),
+                _target_text("run_time", good),
+                _target_text("run_time", great),
+                status["run_time"],
+            )
+        )
+
+    header = ("Metric", "Count", "Value", "Good", "Great", "Status")
+    widths = [max(len(r[i]) for r in [header, *rows]) for i in range(len(header))]
+
+    def line(cells: tuple[str, ...]) -> str:
+        first = cells[0].ljust(widths[0])
+        rest = [c.rjust(w) for c, w in zip(cells[1:], widths[1:], strict=True)]
+        return "  ".join([first, *rest]).rstrip()
+
+    sep = "  ".join("-" * w for w in widths)
+    return "\n".join([line(header), sep, *(line(r) for r in rows)])

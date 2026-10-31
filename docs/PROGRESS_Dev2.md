@@ -99,7 +99,23 @@ lock files, `scripts/doctor.py`, Kiro steering. All module stubs created with ow
     against the Appendix C schema. `selfcheck.py` proves all 16 planted bugs fire and all 8 decoys
     stay safe - it lives inside the sealed directory, not `tests/` (B-07).
 
-## Phase 3 ΓÇö integration Γ¼£  ┬╖  ## Phase 4 ΓÇö accuracy & bonuses Γ¼£
+## Phase 3 — integration
+| P3-B1 eval on stored scans + organiser-key converter [done; real-app run pending] — B
+  - P3-B1: `evalkit/runner.py` + `commands.py` — `FlowStopper eval --key <key> --scan <id|latest>`
+    scores a stored scan's snapshot (or `--issues <file>`, which also reads the `scan_meta.json`
+    beside it); the table now shows each §4 metric with its Good/Great target, a status and the run
+    time; the report adds provenance (scan id, run time, truncation, issue counts, unplanted count).
+    `evalkit/convert_organiser_key.py` converts an unknown-format key (CSV/JSON, column aliases,
+    `--map` overrides) and validates it. Decision B-08. 32 new tests incl. one that drives Dev A's
+    real pipeline then scores it with `--scan latest`.
+  - **Live check on Mock A** (scratch copy outside the repo, real SAST + DAST + correlator + store):
+    code detection 13/13 (100%, great), runtime detection 8/13 (61.5%, good), correct links 6/10
+    (60%, good), wrong links 0/6 (great), false alarms 1/16 (6.2%, great), run time 4.9 s (great);
+    1 unplanted issue. `--scan latest` and `--issues` gave identical metrics. Dev A's live
+    integration test (normally self-skipped) also passed while Mock A was up. Not committed to
+    `docs/metrics/`: the baseline is the joint P3-J1 task, against the real app.
+
+## Phase 4 ΓÇö accuracy & bonuses Γ¼£
 ## Phase 5 ΓÇö delivery surface Γ¼£  ┬╖  ## Phase 6 ΓÇö generalisation Γ¼£  ┬╖  ## Phase 7 ΓÇö release Γ¼£
 
 ## Third-party benchmark (we45 Vulnerable-Flask-App) ΓÇö cross-phase
@@ -176,3 +192,9 @@ _Log_
   passes on an empty list, so it would not have caught truncation discarding everything; it now
   asserts the passive findings are present, and a new unit test proves an expired deadline sends no
   payload at all. `make check` green: 290 passed, 1 skipped.
+- 2026-10-31 - Dev B: **P3-B1 complete (real-app run pending)** - `eval --scan <id|latest>` scores
+  stored scans from Dev A's P3-A1 pipeline, the §4 table shows targets/status/run time, and
+  `convert_organiser_key.py` is ready for the organisers' key. Decision **B-08**. Verified live on Mock
+  A: 100% code / 61.5% runtime detection, 6/10 correct links, 0 wrong links, 6.2% false alarms, 4.9 s.
+  `make check` green: 414 passed, 2 skipped (both self-skip: Mock A not running, bench app not
+  fetched). Blocked on the organisers' app/key for the actual real-app run (P3-J1).

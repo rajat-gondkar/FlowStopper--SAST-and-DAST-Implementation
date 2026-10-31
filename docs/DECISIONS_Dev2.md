@@ -12,6 +12,28 @@ prefix keeps our ids from ever colliding with Dev A's `A-` ids.
 > citation in `correlate/issues.py` is correct: D-12 is a *shared* Phase-0 decision and still lives in
 > [`DECISIONS.md`](DECISIONS.md).
 
+- **B-08 (eval on stored scans + the organiser-key converter, P3-B1):** (a) `eval --scan <id>` reads
+  that scan's **snapshot** (`scan_issues`), not the latest state of each issue, so an old scan scores
+  as it was reported; `--scan latest` picks the newest *completed* scan, and a failed or running scan
+  is refused rather than scored as an empty result. Suppressed issues are included because
+  detection counts suppressed findings and the false-alarm metric needs them present to exclude
+  them. (b) **Run time** comes from the stored `timings.total` (or `scan_meta.json` beside an
+  `--issues` file). **Truncation** is only in `scan_meta.json` — the store has no column for it and
+  I did not add one, since that would change the P2-B5 schema for a display hint — so the report
+  says `truncated: null` for `--scan` and the CLI prints "truncation unknown" rather than letting
+  silence read as "not truncated". (c) Targets are graded with the spec's **strict** comparisons
+  (`> 60%`, `< 20%`), so a value exactly on a line misses it; a metric with an empty denominator is
+  `n/a`, because "0 wrong links of 0 Confirmed" would otherwise grade `great` for linking nothing.
+  The "unseen app" target is not a separate row: it is the Correct links rate of a Mock B scan.
+  (d) The written report carries only counts, rates, scan id and run time — never app paths or
+  findings — so a report for the organisers' app can be committed (R5); its own path fields are
+  made relative to the working directory so they carry no home-directory prefix. (e) The organiser
+  key format is unknown (D-03), so the converter is **mapping-driven** (CSV/JSON, column aliases,
+  `--map field=column` overrides) instead of guessed against one layout. Its alias list deliberately
+  omits `kind` from the CWE candidates (in our own format it holds `pair`/`code_only`) and `planted`
+  from the decoy candidates (`planted=yes` means the opposite), and it resolves columns from the
+  union of all rows' keys: a first draft resolved from row 0 only and silently turned JSON decoys,
+  which carried the marker only on later rows, into planted vulns.
 - **B-07 (Mock B held-out hygiene, P2-B7)** — _(a) ratified 2026-10-31; keep as implemented_:
   (a) Mock B's verification lives in `apps/mock_b/selfcheck.py`, **not** under `tests/`, to preserve
   held-out isolation until Phase 6 — `make check` collects only `tests/`, and a test file there would

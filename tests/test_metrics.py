@@ -87,12 +87,13 @@ def test_run_eval_writes_and_matches(tmp_path):
     out = tmp_path / "metrics.json"
     from FlowStopper.evalkit.runner import run_eval
 
-    metrics, written = run_eval(FIXTURES / "answer_key.json", FIXTURES / "expected_issues.json", out)
+    report, written = run_eval(FIXTURES / "answer_key.json", FIXTURES / "expected_issues.json", out)
     assert written == out and out.exists()
     on_disk = json.loads(out.read_text())
     expected = load_json("expected_metrics.json")
     expected.pop("_comment", None)
-    assert metrics == expected == on_disk
+    # P3-B1: the written file is a report with provenance; the metrics block is unchanged.
+    assert report["metrics"] == expected == on_disk["metrics"]
 
 
 def test_eval_cli_on_fixtures(tmp_path):
