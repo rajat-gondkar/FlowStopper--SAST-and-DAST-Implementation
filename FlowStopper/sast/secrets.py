@@ -26,8 +26,8 @@ import ast
 import math
 import re
 from collections import Counter
-from dataclasses import dataclass
-from pathlib import Path
+from dataclasses import dataclass, replace
+from pathlib import Path, PurePosixPath
 from typing import Optional, Union
 
 from FlowStopper.sast.config import SastConfig
@@ -161,7 +161,23 @@ def scan_secrets(
         hits += _PythonSecretScan(idx, module, cfg).run()
     for path in _config_files(base, cfg):
         hits += _scan_config_file(path, base, cfg)
-    return _dedupe(hits)
+    return [_capped(hit, cfg) for hit in _dedupe(hits)]
+
+
+def is_test_path(rel: str) -> bool:
+    """True for test code: a file under a `tests`/`test` directory, `test_*.py`, `*_test.py` or `conftest.py`."""
+    parts = PurePosixPath(rel).parts
+    if any(part in ("tests", "test") for part in parts[:-1]):
+        return True
+    base = parts[-1] if parts else ""
+    return (base.startswith("test_") and base.endswith(".py")) or base.endswith("_test.py") or base == "conftest.py"
+
+
+def _capped(hit: SecretHit, cfg: SastConfig) -> SecretHit:
+    """Secrets in test code are still reported, at no more than `secret_test_confidence` (DECISIONS A-43)."""
+    if not is_test_path(hit.file):
+        return hit
+    return replace(hit, confidence=min(hit.confidence, cfg.secret_test_confidence))
 
 
 def shannon_entropy(value: str) -> float:

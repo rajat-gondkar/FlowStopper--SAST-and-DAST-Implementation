@@ -17,6 +17,7 @@ from typing import Optional
 from FlowStopper.cwe import get_cwe
 from FlowStopper.ids import code_finding_id
 from FlowStopper.models import CodeLocation, Engine, Finding, SastResult, TaintInfo
+from FlowStopper.sast import suppress
 from FlowStopper.sast.callgraph import annotate_reachable, build_call_graph
 from FlowStopper.sast.config import SastConfig
 from FlowStopper.sast.index import ProjectIndex, build_index
@@ -58,6 +59,15 @@ def run_sast(source_root: Path | str, config: Optional[SastConfig] = None) -> Sa
     stats["template_findings"] = sum(1 for f in taint if f.rule_id == TEMPLATE_RULE_ID)
     stats["functions_analysed"] = taint_stats.functions_analysed
     stats["summary_iterations"] = taint_stats.summary_iterations
+    # B-2 noise cut counters (P4-A2): how many findings were kept back, and why.
+    reasons = [f.suppress_reason or "" for f in findings if f.suppressed]
+    stats["reported_findings"] = len(findings) - len(reasons)
+    stats["suppressed_findings"] = len(reasons)
+    stats["suppressed_sanitized"] = sum(1 for r in reasons if r.startswith(suppress.SANITIZED_PREFIX))
+    stats["suppressed_safe"] = sum(1 for r in reasons if r.startswith(suppress.SAFE_PREFIX))
+    stats["suppressed_unreachable"] = sum(1 for r in reasons if r == suppress.UNREACHABLE)
+    stats["request_hooks"] = taint_stats.request_hooks
+    stats["unreachable_functions"] = taint_stats.unreachable_functions
     return SastResult(routes=routes, findings=findings, stats=stats)
 
 

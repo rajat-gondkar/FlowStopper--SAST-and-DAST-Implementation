@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import logging
 
 from FlowStopper.models import ParamLocation, Route, RouteParam
 from FlowStopper.sast.callgraph import annotate_reachable, build_call_graph
@@ -50,6 +51,15 @@ def _routes(index, graph, config=None) -> list[Route]:
 
 def _by_cwe(findings: list[TaintFinding], cwe: int) -> list[TaintFinding]:
     return [f for f in findings if f.cwe == cwe]
+
+
+def _live(findings: list[TaintFinding]) -> list[TaintFinding]:
+    """Reported findings only: P4-A2 keeps sanitised/safe flows as suppressed findings (A-47)."""
+    return [f for f in findings if not f.suppressed]
+
+
+def _suppressed(findings: list[TaintFinding]) -> list[tuple]:
+    return [(f.function, f.cwe, f.suppress_reason) for f in findings if f.suppressed]
 
 
 # --------------------------------------------------------------------------- P2-A3 sources
@@ -547,8 +557,14 @@ def test_int_clears_every_cwe_and_escape_clears_only_xss(tmp_path):
         """
     }
     findings = _findings(tmp_path, files)
-    assert [(f.function, f.cwe) for f in findings] == [("app.escaped", 89)]
-    assert findings[0].taint.sanitizers_seen == ["html.escape"]
+    live = _live(findings)
+    assert [(f.function, f.cwe) for f in live] == [("app.escaped", 89)]
+    assert live[0].taint.sanitizers_seen == ["html.escape"]
+    assert _suppressed(findings) == [
+        ("app.cast", 89, "sanitized:builtins.int"),
+        ("app.cast", 79, "sanitized:builtins.int"),
+        ("app.escaped", 79, "sanitized:html.escape"),
+    ]
 
 
 def test_sink_results_are_taint_barriers(tmp_path):
@@ -609,7 +625,11 @@ def test_guards_make_a_redirect_safe(tmp_path):
         """
     }
     findings = _findings(tmp_path, files)
-    assert [(f.function, f.cwe) for f in findings] == [("app.raw", 601)]
+    assert [(f.function, f.cwe) for f in _live(findings)] == [("app.raw", 601)]
+    assert _suppressed(findings) == [
+        ("app.checked", 601, "sanitized:guard:allow-list"),
+        ("app.listed", 601, "sanitized:guard:allow-list"),
+    ]
 
 
 def test_location_header_assignment_is_a_redirect_sink(tmp_path):
@@ -845,7 +865,10 @@ def test_constant_sql_with_tainted_binds_is_safe(tmp_path):
                 return conn.execute("SELECT id FROM products WHERE id = ?", (product_id,)).fetchall()
         """,
     }
-    assert _findings(tmp_path, files) == []
+    findings = _findings(tmp_path, files)
+    assert _live(findings) == []
+    assert _suppressed(findings) == [("store.fetch", 89, "safe:sql-parameterised")]
+    assert findings[0].title == "Parameterised SQL query with request data in bind parameters"
 
 
 def test_summaries_record_param_to_sink_and_param_to_return(tmp_path):
@@ -888,3 +911,214 @@ def test_findings_are_sorted_and_deterministic(tmp_path):
     keys = [(f.file, f.line_start, f.cwe, f.rule_id) for f in first]
     assert keys == sorted(keys)
     assert first == second
+
+
+# --------------------------------------------------------------------------- P4: content type set after construction
+def _response_app(*body: str) -> dict[str, str]:
+    """A Flask route building `resp = Response(json.dumps(<request data>))`, then running `body`."""
+    lines = "\n".join(f"    {line}" for line in body)
+    source = (
+        "import json\n\nfrom flask import Flask, Response, request\n\napp = Flask(__name__)\n\n\n"
+        '@app.route("/api/user", methods=["POST"])\n'
+        "def user():\n"
+        '    resp = Response(json.dumps({"u": request.json["u"]}))\n'
+        f"{lines}\n"
+    )
+    return {"app.py": source}
+
+
+def test_content_type_set_after_construction_makes_the_response_safe(tmp_path):
+    writes = [
+        'resp.mimetype = "application/json"',
+        'resp.content_type = "text/plain; charset=utf-8"',
+        'resp.headers["Content-Type"] = "application/json"',
+    ]
+    for i, write in enumerate(writes):
+        files = _response_app('resp.headers["Authorization"] = "x"', "resp.status_code = 200", write, "return resp")
+        assert _by_cwe(_findings(tmp_path, files, name=f"safe{i}"), 79) == [], write
+
+
+def test_content_type_write_that_may_not_apply_keeps_the_xss(tmp_path):
+    bodies = {
+        "branch": ("if request.args.get('fmt'):", '    resp.mimetype = "application/json"', "return resp"),
+        "html": ('resp.mimetype = "text/html"', "return resp"),
+        "reassigned": ('resp = Response("fixed")', 'resp.mimetype = "application/json"', "return resp"),
+        "returned_first": ("return resp", 'resp.mimetype = "application/json"'),
+    }
+    for case, body in bodies.items():
+        findings = _by_cwe(_findings(tmp_path, _response_app(*body), name=case), 79)
+        assert [(f.function, f.line_start) for f in findings] == [("app.user", 10)], case
+
+
+def test_last_content_type_write_decides(tmp_path):
+    """A-53: a later straight-line write wins, and anything else that may retype the response keeps the XSS."""
+    safe_first = 'resp.mimetype = "application/json"'
+    overrides = {
+        "header_override": (safe_first, 'resp.headers["Content-Type"] = "text/html"', "return resp"),
+        "headers_set": (safe_first, 'resp.headers.set("Content-Type", "text/html")', "return resp"),
+        "computed_key": (safe_first, 'resp.headers[request.args["h"]] = "text/html"', "return resp"),
+        "headers_replaced": (safe_first, 'resp.headers = {"Content-Type": "text/html"}', "return resp"),
+        "branch_after": (safe_first, "if request.args.get('fmt'):", '    resp.mimetype = "text/html"', "return resp"),
+        "returned_headers": (safe_first, 'return resp, 200, {"Content-Type": "text/html"}'),
+    }
+    for case, body in overrides.items():
+        findings = _by_cwe(_findings(tmp_path, _response_app(*body), name=case), 79)
+        assert [(f.function, f.line_start) for f in findings] == [("app.user", 10)], case
+    retyped = {
+        "html_then_json": ('resp.mimetype = "text/html"', safe_first, "return resp"),
+        "cookie_after": (safe_first, 'resp.set_cookie("s", "1")', "return resp, 200"),
+    }
+    for case, body in retyped.items():
+        assert _by_cwe(_findings(tmp_path, _response_app(*body), name=case), 79) == [], case
+
+
+# --------------------------------------------------------------------------- P4: block-ending calls, fixpoint cap
+def test_resolved_abort_ends_the_block(tmp_path):
+    files = {
+        "app.py": """
+            from flask import Flask, abort, redirect, request
+
+            app = Flask(__name__)
+
+            ALLOWED = {"/home", "/account"}
+
+
+            @app.route("/go")
+            def go():
+                target = request.args.get("next", "/")
+                if target not in ALLOWED:
+                    abort(400)
+                return redirect(target)
+        """
+    }
+    findings = _findings(tmp_path, files)
+    assert _by_cwe(_live(findings), 601) == []
+    assert _suppressed(findings) == [("app.go", 601, "sanitized:guard:allow-list")]
+
+
+def test_unresolved_abort_like_call_does_not_end_the_block(tmp_path):
+    for i, call in enumerate(['checker.fail("x")', "obj.abort()"]):
+        files = {
+            "app.py": f"""
+                from flask import Flask, request
+
+                app = Flask(__name__)
+
+
+                @app.route("/q")
+                def q_view(checker, obj):
+                    q = request.args.get("q", "")
+                    {call}
+                    return f"<p>{{q}}</p>"
+            """
+        }
+        findings = _by_cwe(_findings(tmp_path, files, name=f"app{i}"), 79)
+        assert [f.function for f in findings] == ["app.q_view"], call
+
+
+def test_sys_exit_ends_the_block(tmp_path):
+    files = {
+        "app.py": """
+            import sys
+
+            from flask import Flask, request
+
+            app = Flask(__name__)
+
+
+            @app.route("/q")
+            def q_view():
+                q = request.args.get("q", "")
+                sys.exit(1)
+                return f"<p>{q}</p>"
+        """
+    }
+    assert _by_cwe(_findings(tmp_path, files), 79) == []
+
+
+FIXPOINT_TREE = {
+    "m.py": """
+        import os
+
+
+        def outer(cmd):
+            inner(cmd)
+
+
+        def inner(cmd):
+            os.system(cmd)
+    """
+}
+
+
+def test_fixpoint_cap_logs_a_warning(tmp_path, caplog):
+    index = build_index(make_tree(tmp_path / "app", FIXPOINT_TREE))
+    graph = build_call_graph(index)
+    logger = "FlowStopper.sast.taint.summaries"
+    with caplog.at_level(logging.WARNING, logger=logger):
+        compute_summaries(index, graph, SastConfig(fixpoint_max_iterations=1))
+    assert any("fixpoint" in r.getMessage() for r in caplog.records if r.name == logger)
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger=logger):
+        compute_summaries(index, graph)
+    assert [r for r in caplog.records if r.name == logger] == []
+
+
+# --------------------------------------------------------------------------- P4: request URL, template source
+URL_READS = ["request.url", "request.path", "request.full_path", "request.base_url"]
+
+
+def test_request_url_attributes_are_unnamed_path_sources(tmp_path):
+    ctx, nodes = _exprs(tmp_path, FLASK_HEADER, URL_READS)
+    for node, expr in zip(nodes, URL_READS, strict=True):
+        ref = request_source(node, ctx)
+        assert ref is not None, f"not recognised: {expr}"
+        assert (ref.param_name, ref.location_kind, ref.is_container) == (None, ParamLocation.PATH, False), expr
+        assert ref.cleared == frozenset({601}), expr
+
+
+def _one_route(body: str, imports: str = "request") -> dict[str, str]:
+    return {
+        "app.py": f"""
+            from flask import Flask, {imports}
+
+            app = Flask(__name__)
+
+
+            @app.route("/page")
+            def page():
+                {body}
+        """
+    }
+
+
+def test_render_template_string_source_is_an_xss_sink(tmp_path):
+    files = _one_route(
+        "return render_template_string('<h3>%s</h3>' % request.args.get('q', ''))",
+        "render_template_string, request",
+    )
+    findings = _findings(tmp_path, files)
+    assert [(f.cwe, f.rule_id, f.taint.source_param) for f in findings] == [(79, "py.xss.percent.template-string", "q")]
+    assert findings[0].suppressed is False
+    assert "render_template_string()" in findings[0].title
+
+
+def test_render_template_string_variables_are_not_the_template_source(tmp_path):
+    files = _one_route(
+        "return render_template_string('<p>{{ q }}</p>', q=request.args.get('q'))",
+        "render_template_string, request",
+    )
+    assert [f for f in _findings(tmp_path, files) if f.rule_id.endswith(".template-string")] == []
+
+
+def test_redirect_to_the_request_url_is_not_an_open_redirect(tmp_path):
+    for i, attr in enumerate(["url", "path"]):
+        files = _one_route(f"return redirect(request.{attr})", "redirect, request")
+        assert _by_cwe(_findings(tmp_path, files, name=f"app{i}"), 601) == [], attr
+
+
+def test_request_path_in_html_is_xss_without_a_parameter_name(tmp_path):
+    findings = _findings(tmp_path, _one_route('return f"<p>{request.path}</p>"'))
+    assert [(f.cwe, f.suppressed) for f in findings] == [(79, False)]
+    assert findings[0].taint.source_param is None
+    assert findings[0].taint.source_kind is ParamLocation.PATH

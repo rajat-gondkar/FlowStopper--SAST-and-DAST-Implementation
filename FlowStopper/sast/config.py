@@ -17,4 +17,6 @@ class SastConfig(BaseModel):
     secret_min_length: int = 6  # P2-A4: shortest reported literal
     secret_entropy_bits: float = 3.0  # P2-A4: Shannon bits/char that raise confidence
     secret_entropy_min_length: int = 16  # P2-A4: length from which entropy is measured
+    # P4 / DECISIONS A-43: confidence cap for secrets found in test code (tests/ dirs, test_*.py, conftest.py)
+    secret_test_confidence: float = 0.5
     max_text_file_bytes: int = 1_000_000  # P2-A4/A5: skip non-Python text files > 1 MB

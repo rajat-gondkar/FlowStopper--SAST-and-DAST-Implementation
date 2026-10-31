@@ -20,6 +20,7 @@ deterministically. Parse only: nothing here imports or executes scanned code (R7
 from __future__ import annotations
 
 import ast
+import logging
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from typing import Optional
@@ -28,6 +29,13 @@ from FlowStopper.models import CodeLocation, ParamLocation, Route, TaintInfo
 from FlowStopper.sast.callgraph import CallGraph, build_call_graph, local_types
 from FlowStopper.sast.config import SastConfig
 from FlowStopper.sast.index import FunctionInfo, ProjectIndex
+from FlowStopper.sast.suppress import (
+    UNREACHABLE,
+    is_request_hook,
+    sanitized_reason,
+    unreachable_functions,
+    unreachable_reason,
+)
 from FlowStopper.sast.taint.engine import (
     PARAM,
     REQUEST,
@@ -45,6 +53,8 @@ from FlowStopper.sast.taint.engine import (
 from FlowStopper.sast.taint.sources import handler_param_sources
 from FlowStopper.sast.templates import TemplateLookup
 
+log = logging.getLogger(__name__)
+
 SinkHit = SinkReport  # a summarised sink: the same record the engine reports
 
 CONFIDENCE_FULL = 0.9  # a handler-rooted chain with a named source parameter
@@ -57,6 +67,8 @@ class TaintStats:
 
     functions_analysed: int = 0
     summary_iterations: int = 0
+    request_hooks: int = 0
+    unreachable_functions: int = 0
 
 
 @dataclass(frozen=True)
@@ -115,6 +127,7 @@ def compute_summaries(
     order = _reverse_topological(graph, index.functions)
     summaries: dict[str, FunctionSummary] = {}
     iterations = 0
+    converged = False
     for _ in range(max(cfg.fixpoint_max_iterations, 1)):
         iterations += 1
         changed = False
@@ -124,7 +137,14 @@ def compute_summaries(
                 summaries[qualname] = summary
                 changed = True
         if not changed:
+            converged = True
             break
+    if not converged:  # summaries may be incomplete: say so instead of silently missing flows (A-41)
+        log.warning(
+            "taint summaries hit the fixpoint cap (fixpoint_max_iterations=%d) before converging on %d functions",
+            cfg.fixpoint_max_iterations,
+            len(order),
+        )
     if stats is not None:
         stats.functions_analysed = len(summaries)
         stats.summary_iterations = iterations
@@ -171,6 +191,39 @@ def analyse_taint(
             finding = _finding(report, routes)
             if finding is not None:
                 findings.append(finding)
+
+    # Request hooks (`@app.errorhandler(404)`, `@app.before_request`, ...): code-only entry points
+    # with no route id of their own and no reachability fallback (A-46).
+    hooks = sorted(q for q, fn in index.functions.items() if q not in by_handler and is_request_hook(fn))
+    for qualname in hooks:
+        hook_fn = index.functions[qualname]
+        ctx = index.context(hook_fn.module, hook_fn, local_types(index, hook_fn))
+        result = walk_function(
+            ctx,
+            hook_fn,
+            {},
+            cfg,
+            hook=_SummaryHook(index, summaries, qualname),
+            is_handler=True,
+            templates=templates,
+        )
+        for report in result.reports:
+            finding = _finding(report, routes, fallback=False)
+            if finding is not None:
+                findings.append(finding)
+
+    # Functions no route can reach: their own sinks, kept as suppressed findings (A-48).
+    unreachable = unreachable_functions(index, routes, graph)
+    for qualname in sorted(unreachable):
+        summary = summaries.get(qualname)
+        if summary is None:
+            continue
+        for hit in (*summary.param_to_sink, *summary.request_sinks):
+            if hit.chain == (qualname,) and unreachable_reason(hit.cwe) is not None:
+                findings.append(_unreachable_finding(hit, index.functions[qualname]))
+    if stats is not None:
+        stats.request_hooks = len(hooks)
+        stats.unreachable_functions = len(unreachable)
     return _merge(findings)
 
 
@@ -215,18 +268,38 @@ class _SummaryHook:
         for hit in summary.param_to_sink:
             if self.caller in hit.chain:
                 continue  # recursion: the chain already passes through this function
-            mapped, built = self._map_labels(hit, actuals)
-            if mapped:
-                out.append(replace(hit, labels=mapped, built=hit.built | built, chain=(self.caller, *hit.chain)))
+            live, cleared, built = self._map_labels(hit, actuals)
+            chain = (self.caller, *hit.chain)
+            if hit.suppressed:  # already suppressed in the callee: keep its reason
+                if live or cleared:
+                    out.append(replace(hit, labels=live | cleared, built=hit.built | built, chain=chain))
+            elif live:
+                out.append(replace(hit, labels=live, built=hit.built | built, chain=chain))
+            elif cleared:  # every caller label was sanitised for this CWE on the way (A-47)
+                reason = sanitized_reason(cleared, hit.cwe)
+                if reason is not None:
+                    out.append(
+                        replace(
+                            hit,
+                            labels=cleared,
+                            built=hit.built | built,
+                            chain=chain,
+                            suppressed=True,
+                            suppress_reason=reason,
+                        )
+                    )
         for hit in summary.request_sinks:
             if self.caller not in hit.chain:
                 out.append(replace(hit, chain=(self.caller, *hit.chain)))
         return tuple(out)
 
     @staticmethod
-    def _map_labels(hit: SinkHit, actuals: Mapping[int, TaintValue]) -> tuple[frozenset[TaintLabel], frozenset[str]]:
-        """The caller-side labels a parameter-to-sink hit stands for, with the arguments' built kinds."""
-        mapped: set[TaintLabel] = set()
+    def _map_labels(
+        hit: SinkHit, actuals: Mapping[int, TaintValue]
+    ) -> tuple[frozenset[TaintLabel], frozenset[TaintLabel], frozenset[str]]:
+        """The caller-side labels a parameter-to-sink hit stands for: (live, cleared for its CWE, built kinds)."""
+        live: set[TaintLabel] = set()
+        cleared: set[TaintLabel] = set()
         built: frozenset[str] = frozenset()
         for label in hit.labels:
             if label.kind != PARAM or label.param_index is None:
@@ -237,9 +310,8 @@ class _SummaryHook:
             built |= actual.built
             for caller_label in actual.labels:
                 carried = caller_label.carry(label.cleared, label.sanitizers)
-                if hit.cwe not in carried.cleared:
-                    mapped.add(carried)
-        return frozenset(mapped), built
+                (cleared if hit.cwe in carried.cleared else live).add(carried)
+        return frozenset(live), frozenset(cleared), built
 
 
 def _summarise(
@@ -341,7 +413,12 @@ def _handler_env(handler: FunctionInfo, routes: list[Route]) -> TaintEnv:
     return env
 
 
-def _finding(report: SinkReport, routes: list[Route]) -> Optional[TaintFinding]:
+def _finding(report: SinkReport, routes: list[Route], *, fallback: bool = True) -> Optional[TaintFinding]:
+    """A finding for one handler-walk report.
+
+    `fallback=False` (request hooks, A-46) never borrows route ids by reachability: a helper shared
+    with a route must not take that route's id.
+    """
     labels = sorted((label for label in report.labels if label.kind == REQUEST), key=lambda lbl: lbl.sort_key)
     if not labels:
         return None
@@ -349,7 +426,9 @@ def _finding(report: SinkReport, routes: list[Route]) -> Optional[TaintFinding]:
     origin = report.chain[0] if report.chain else report.function
     entry_routes = sorted({route.id for route in routes if route.handler == origin})
     confidence = CONFIDENCE_FULL
-    if not entry_routes:  # no handler-rooted origin: fall back to reachability (A-13)
+    if not entry_routes and not fallback:
+        confidence = CONFIDENCE_PARTIAL
+    elif not entry_routes:  # no handler-rooted origin: fall back to reachability (A-13)
         entry_routes = sorted(
             {
                 route.id
@@ -391,17 +470,79 @@ def _finding(report: SinkReport, routes: list[Route]) -> Optional[TaintFinding]:
     )
 
 
+def _unreachable_finding(hit: SinkHit, fn: FunctionInfo) -> TaintFinding:
+    """A sink inside a function no route reaches: suppressed, code-only (A-48).
+
+    An existing `safe:`/`sanitized:` reason wins over `unreachable`.
+    """
+    reason = hit.suppress_reason if hit.suppressed and hit.suppress_reason else UNREACHABLE
+    requests = sorted((label for label in hit.labels if label.kind == REQUEST), key=lambda lbl: lbl.sort_key)
+    winner = requests[0] if requests else None
+    params = sorted(
+        {
+            fn.params[label.param_index]
+            for label in hit.labels
+            if label.kind == PARAM and label.param_index is not None and label.param_index < len(fn.params)
+        }
+    )
+    source_location = None
+    if winner is not None:
+        source_location = CodeLocation(
+            file=winner.file, line_start=winner.line, line_end=winner.line, function=winner.function
+        )
+    taint = TaintInfo(
+        source_param=winner.param_name if winner is not None else None,
+        source_kind=winner.location_kind if winner is not None else None,
+        source_location=source_location,
+        call_chain=[fn.qualname],
+        entry_routes=[],
+        sanitizers_seen=list(hit.sanitizers_seen),
+    )
+    report = replace(hit, suppressed=True, suppress_reason=reason)
+    return TaintFinding(
+        cwe=hit.cwe,
+        rule_id=hit.rule_id,
+        title=report.title,
+        file=hit.file,
+        line_start=hit.line_start,
+        line_end=hit.line_end,
+        function=hit.function,
+        confidence=CONFIDENCE_PARTIAL,
+        taint=taint,
+        suppressed=True,
+        suppress_reason=reason,
+        raw={
+            "source_params": sorted({label.param_name for label in requests if label.param_name}),
+            "built": sorted(hit.built),
+            "html_markup": hit.html_markup,
+            "function_params": params,
+        },
+    )
+
+
 def _merge(findings: Iterable[TaintFinding]) -> list[TaintFinding]:
-    """One finding per `Finding.id` key: union the routes and sanitisers, keep the strongest chain."""
+    """One finding per `Finding.id` key: union the routes and sanitisers, keep the strongest chain.
+
+    A live finding at a sink site `(file, function, line, cwe)` drops every suppressed finding at the
+    same site (A-47), so a suppressed duplicate can never stand in for the live one downstream.
+    """
     best: dict[tuple, TaintFinding] = {}
     for finding in findings:
         key = (finding.file, finding.function, finding.line_start, finding.cwe, finding.rule_id)
         current = best.get(key)
         best[key] = finding if current is None else _merge_two(current, finding)
-    return sorted(best.values(), key=lambda f: (f.file, f.line_start, f.cwe, f.rule_id))
+    live_sites = {_site(f) for f in best.values() if not f.suppressed}
+    kept = [f for f in best.values() if not f.suppressed or _site(f) not in live_sites]
+    return sorted(kept, key=lambda f: (f.file, f.line_start, f.cwe, f.rule_id))
+
+
+def _site(finding: TaintFinding) -> tuple:
+    return (finding.file, finding.function, finding.line_start, finding.cwe)
 
 
 def _merge_two(left: TaintFinding, right: TaintFinding) -> TaintFinding:
+    if left.suppressed != right.suppressed:  # never union a live finding with a suppressed one (A-47)
+        return right if left.suppressed else left
     primary, other = (left, right) if _rank(left) <= _rank(right) else (right, left)
     taint = primary.taint.model_copy(
         update={

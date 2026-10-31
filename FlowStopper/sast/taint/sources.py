@@ -55,15 +55,23 @@ CONTAINERS: dict[str, ParamLocation] = {
 ITEM_GETTERS: frozenset[str] = frozenset({"get", "getlist", "getall", "pop"})
 CONTAINER_CALLS: frozenset[str] = frozenset({"to_dict", "copy", "dict", "lists"})
 JSON_CALLS: frozenset[str] = frozenset({"get_json", "json"})
+# The requested URL itself (DECISIONS A-44): request data with no parameter name. Redirecting to it is
+# the redirect-to-self idiom, so CWE-601 is cleared from the start.
+URL_ATTRIBUTES: frozenset[str] = frozenset({"url", "path", "full_path", "base_url"})
+URL_CLEARED: frozenset[int] = frozenset({601})
 
 
 @dataclass(frozen=True)
 class SourceRef:
-    """One request read. `param_name` is None for a whole container (DECISIONS A-15)."""
+    """One request read. `param_name` is None for a whole container (DECISIONS A-15).
+
+    `cleared` lists CWEs the read can never be dangerous for (the request URL and CWE-601, A-44).
+    """
 
     param_name: Optional[str]
     location_kind: ParamLocation
     is_container: bool = False
+    cleared: frozenset[int] = frozenset()
 
 
 def request_source(expr: ast.expr, ctx: ModuleContext) -> Optional[SourceRef]:
@@ -73,6 +81,8 @@ def request_source(expr: ast.expr, ctx: ModuleContext) -> Optional[SourceRef]:
     if isinstance(expr, ast.Subscript):
         location = container_location(expr.value, ctx)
         return None if location is None else SourceRef(const_str(expr.slice), location, False)
+    if isinstance(expr, ast.Attribute) and expr.attr in URL_ATTRIBUTES and is_request(expr.value, ctx):
+        return SourceRef(None, ParamLocation.PATH, False, cleared=URL_CLEARED)
     location = container_location(expr, ctx)
     return None if location is None else SourceRef(None, location, True)
 

@@ -6,7 +6,7 @@ from typing import Optional
 
 from FlowStopper.sast.config import SastConfig
 from FlowStopper.sast.index import build_index
-from FlowStopper.sast.secrets import SecretHit, scan_secrets, shannon_entropy
+from FlowStopper.sast.secrets import SecretHit, is_test_path, scan_secrets, shannon_entropy
 from tests.sast_helpers import make_tree
 
 
@@ -324,6 +324,33 @@ def test_hits_are_deduplicated_and_sorted(tmp_path):
         ("b_mod.py", 1, "SECRET_KEY"),
     ]
     assert len({(h.file, h.line, h.name) for h in hits}) == len(hits)
+
+
+def test_secrets_in_test_code_are_reported_at_capped_confidence(tmp_path):
+    literal = 'PASSWORD = "hunter2-pass"\n'  # short, so no entropy bonus: 0.7 outside test code
+    paths = ["tests/test_login.py", "test_x.py", "pkg/x_test.py", "conftest.py", "app/settings.py"]
+    hits = scan(tmp_path, dict.fromkeys(paths, literal))
+    confidence = {h.file: h.confidence for h in hits if h.name == "PASSWORD"}
+    assert sorted(confidence) == sorted(paths)
+    assert all(confidence[p] <= 0.5 for p in paths[:4])
+    assert confidence["app/settings.py"] == 0.7
+
+
+def test_provider_key_in_tests_is_still_reported_but_capped(tmp_path):
+    hits = scan(tmp_path, {"tests/fixtures_data.py": 'CLIENT = "AKIAZ3MQ7RXK2PLV9TQD"\n'})
+    assert [(h.file, h.rule_id, h.confidence) for h in hits] == [
+        ("tests/fixtures_data.py", "py.secret.hardcoded.prefix", 0.5)
+    ]
+
+
+def test_is_test_path():
+    assert [is_test_path(p) for p in ["test/a.py", "a/tests/b.py", "testing.py", "contest.py", "src/app.py"]] == [
+        True,
+        True,
+        False,
+        False,
+        False,
+    ]
 
 
 def test_scan_builds_its_own_index_when_none_is_given(tmp_path):

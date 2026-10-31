@@ -3,7 +3,106 @@
 Dev A's own design decisions (ids `A-NN`, newest first). Joint/Phase-0 decisions are in the shared
 [`DECISIONS.md`](DECISIONS.md); Dev B's are in [`DECISIONS_Dev2.md`](DECISIONS_Dev2.md). Using an
 `A-` prefix keeps our ids from ever colliding with Dev B's `B-` ids.
+- **A-54 (two more run-time lookup idioms turn `unreachable` off)**: `inspect.getmembers(...)`
+  registries and a lookup function passed as a value (e.g. `functools.reduce(getattr, parts, mod)`)
+  can reach any function, so they now count as a run-time lookup like A-52. Both were confirmed to
+  leave route-reachable sinks wrongly marked `unreachable` before. Tests added in
+  `tests/test_sast_suppress.py::REFERENCED`.
+- **A-53 (last content-type write decides, A-38 follow-up)**: the lookahead after `resp = Response(...)`
+  now scans the whole straight-line range and keeps the verdict of the last `mimetype`/`content_type`/
+  `headers["Content-Type"]` write, so a later override to `text/html` keeps the CWE-79. A call on
+  `resp.headers` (`.set/.update/...`), a write to `resp.headers` itself or to a computed header key, a
+  compound statement that mentions the response's content type or headers, or a returned
+  `(resp, status, headers)` tuple with non-constant extras all mean "not safe". Review finding; the
+  bench false positive at `app/app.py:185` stays fixed.
+- **A-52 (dynamic name lookup switches `unreachable` off, A-48 follow-up)**: when any module calls
+  `getattr`/`attrgetter`/`methodcaller`/`eval`/`exec` with a non-constant name argument, calls
+  `globals()`/`locals()`/`vars()`, or reads `__dict__`, `unreachable_functions` returns nothing for the
+  project: a computed name such as `"cmd_" + action` can reach any function, and doubt means
+  reachable. The simpler project-wide bail-out was chosen over per-module or name-prefix matching.
+  Mock A and the bench are unaffected (0 `unreachable` findings before and after). Review finding.
+- **A-51 (Mock A key gaps are known extras, key unchanged)**: `POST /login` `password` shares the
+  M02 sink and produces a single SAST finding, so a second planted pair would be structurally
+  unlinkable under one-to-one matching. The `GET /download` "XSS" is a reflection inside Werkzeug's
+  debug traceback, the same artefact as BACKLOG 5 (Dev B's). Both stay unplanted extras and
+  `apps/mock_a/answer_key.json` is not edited (BACKLOG 6).
+- **A-50 (P4-A3 performance: parse once, no optimisation needed)**: only `index.py::parse_source`
+  calls `ast.parse`; routes, call graph, taint, secrets and snippets reuse `ModuleInfo.tree`/`.lines`,
+  now asserted by `test_run_sast_parses_each_python_file_once`. Median `run_sast` after batches 1-2:
+  Mock A 0.025 s (planning 0.04 s), bench 0.038 s (0.06 s), pydantic proxy 105 files / 1798
+  functions 1.8 s (3.1 s), a synthetic 200-route project 2.4 s. Nothing regressed, so no code was
+  optimised.
 
+- **A-49 (sanitised/safe findings come from the engine)**: the engine already knows the clearance at
+  the sink, so `_FunctionWalk._sink_report` emits the suppressed `sanitized:`/`safe:` reports itself,
+  and `_SummaryHook` turns a callee hit whose caller labels were all cleared into a suppressed one.
+  `suppress.py` holds only the reason strings, the request-hook test and the reachability test.
+  `analyse_taint` therefore returns suppressed findings too; existing tests whose intent is "nothing
+  reported" now filter `not f.suppressed` and also assert the suppressed reasons.
+- **A-48 (conservative `unreachable`)**: no project routes → nothing is unreachable. A candidate is a
+  module-level, undecorated, non-dunder function that is not a method and whose name never appears in
+  the project as a value reference, a name-like string (also a dotted/colon path such as
+  `"pkg.tasks.run"`, which goes slightly beyond the plan), the leaf of a call that does not resolve
+  to a project function or class, or the leaf of any call the call graph does not see (module or
+  class level, lambdas, decorators, defaults). Every other function plus every route handler is a
+  root; a BFS with no depth cap removes reached candidates. Only an unreachable function's *own*
+  sinks are emitted (suppressed, `entry_routes` empty, confidence 0.7); a `safe:`/`sanitized:` reason
+  wins, and CWE-798 is never suppressed. Doubt always means reachable: a wrong `unreachable` would
+  hide a real bug. Mock A: 1 unreachable function (no sinks), bench: 0.
+- **A-47 (B-2 reasons and precedence)**: reasons are `sanitized:<names>` (sorted sanitiser/guard names
+  of the cleared labels joined with `+`, e.g. `sanitized:html.escape`, `sanitized:guard:allow-list`),
+  `safe:sql-parameterised` (constant SQL text, request data only in bind arguments), the unchanged
+  `safe:subprocess-list-no-shell` / `safe:subprocess-no-shell`, and `unreachable`. A clearance with
+  no sanitiser name (the request URL and CWE-601) reports nothing. A live finding at a sink site
+  `(file, function, line, cwe)` drops every suppressed finding at that site, and a live and a
+  suppressed finding are never merged. Dev B's `dedupe.code_key` keeps the highest-confidence
+  finding per site and source parameter, so a suppressed duplicate could otherwise replace a live
+  one and lose a link.
+- **A-46 (request hooks are code-only entry points)**: functions decorated with a leaf in
+  `errorhandler`, `app_errorhandler`, `before_request`, `before_app_request`, `after_request`,
+  `after_app_request`, `teardown_request`, `teardown_app_request`, `before_first_request`,
+  `exception_handler` or `middleware` (and not route handlers) are walked like handlers with an
+  empty seed env. Their findings get `entry_routes == []`, confidence 0.7 and no reachability
+  fallback, so a helper shared with a route never borrows that route's id. No route ids are invented.
+- **A-45 (`render_template_string` template source is a CWE-79 sink)**: new `SinkSpec`
+  `TEMPLATE_STRING` (arg 0 / keyword `source`), rule id `py.xss.<built>.template-string`. It sits in
+  `SINKS`, so `sink_at` wins over the template-render barrier for that callee; its keyword arguments
+  stay escaped template variables and report nothing (bench VF02).
+- **A-44 (request URL attributes are sources)**: `request.url`, `request.path`, `request.full_path`
+  and `request.base_url` are request data with `param_name=None` and location `path`. No pseudo
+  name is invented, because a name like "path" could match an unrelated DAST parameter and make a
+  wrong link. CWE-601 is cleared from the start: `redirect(request.url)` is the redirect-to-self idiom.
+- **A-43 (secrets in test code are capped, not dropped)**: a CWE-798 hit in a file under a `tests/`
+  or `test/` directory, or named `test_*.py`, `*_test.py` or `conftest.py`, keeps being reported but
+  its confidence is capped at `SastConfig.secret_test_confidence` (0.5). Test credentials can still be
+  real, so hiding them would be a silent miss; the cap ranks them below app secrets. Seed data in app
+  code (`user.password = '...'`) is unchanged (BACKLOG 10).
+- **A-42 (receiver-based leaf matching left as is)**: `run_sast` on Mock A and the bench app reports
+  zero `py.traversal.path-access` findings and zero SQL findings on a `.raw`/`.extra` leaf, so there
+  is no observed false positive to fix. `PATH_ACCESS` and `SQL_EXECUTE.leaf_methods` stay unchanged.
+- **A-41 (fixpoint cap logs a warning)**: `compute_summaries` logs one WARNING on
+  `FlowStopper.sast.taint.summaries` when `fixpoint_max_iterations` passes run without a pass that
+  changed nothing, naming the cap and the function count. Before, a non-converged run was visible
+  only as `summary_iterations` in stats.
+- **A-40 (`_is_abort` resolves the callee)**: a call ends a block only when it resolves to
+  `flask.abort`, `flask.helpers.abort`, `werkzeug.exceptions.abort`, `sys.exit`, `builtins.exit`,
+  `builtins.quit`, `os._exit` or `os.abort`. `fail` is dropped and unresolved leaves (`obj.abort()`)
+  no longer cut the rest of the block, which used to hide real flows.
+- **A-39 (template `**ctx` splat)**: `render_template(t, **ctx)` contributes template variables when
+  the splat is an inline dict literal, or a local assigned exactly once (one entry in
+  `FunctionInfo.assignments`) to a dict literal or a bare `dict(k=v, ...)` call. The values are
+  evaluated with the env at the render call; anything else (reassigned, mutated, from a call) stays a
+  miss rather than a guess.
+- **A-38 (content type set after construction)**: `resp = Response(...)` / `make_response(...)` is
+  treated like a safe response wrapper when the following statements of the *same* block set
+  `resp.mimetype`, `resp.content_type` or `resp.headers["Content-Type"]` to a constant
+  `application/json` or `text/plain` before any reassignment of `resp`, return, raise or compound
+  statement. Other plain assignments and expression statements are skipped. A write inside a branch
+  may not run, so that case stays a CWE-79 finding (BACKLOG 9, bench `app/app.py:185`).
+- **A-37 (Mock A binds 127.0.0.1 by default)**: `apps/mock_a/app.py` reads the bind address from
+  `HOST` (default `127.0.0.1`); the Dockerfile and compose file set `HOST=0.0.0.0` so the container
+  is still reachable through its `127.0.0.1:5050` port mapping. A debug-mode app with planted bugs
+  should not listen on every interface of a developer machine (BACKLOG 12).
 - **A-36 (Phase 3 baselines are named per target)**: the spec's `docs/metrics/baseline.json` is the
   organisers'-app baseline, and that app is not available yet. So the P3-J1 runs are saved as
   `baseline_mock_a.json` and `baseline_bench.json`, and `baseline.json` stays unused until the real
@@ -172,14 +271,14 @@ Dev A's own design decisions (ids `A-NN`, newest first). Joint/Phase-0 decisions
   `include_router(prefix=)` composes additively with the router's own `prefix`; Django roots are the
   `urlpatterns` modules not pulled in by another `include()`. One `Route` is emitted per (method,
   path); unresolved/dynamic registrations are skipped, never guessed.
-- **A-02 (SAST name resolution never guesses)** _(formerly B-02)_: `resolve_call` /
+- **A-02 (SAST name resolution never guesses)** _(formerly D-19)_: `resolve_call` /
   `ProjectIndex.canonical` return a project qualname, an external dotted name (`os.system`,
   `flask.request.args.get`) or `builtins.<name>`, and **None** for local variables (unless the call
   graph supplies a tracked instance type), computed callees (`getattr(...)()`, `f()()`), and names
   that point into the project but are defined nowhere. Imports inside `except ImportError:` never
   shadow the `try:` import; a bare name that is not defined, imported or builtin is attributed to the
   module's single external star import.
-- **A-01 (SAST module names + absolute-import fallback)** _(formerly B-01)_: module name = dotted path
+- **A-01 (SAST module names + absolute-import fallback)** _(formerly D-18)_: module name = dotted path
   relative to the source root (`pkg/__init__.py` → `pkg`; `pkg.py` loses to `pkg/__init__.py`, as in
   Python); when the root itself has an `__init__.py` and an identifier name, that name prefixes every
   module. An absolute import resolves as written first; if that is not a project module it is retried

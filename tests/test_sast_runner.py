@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from collections import Counter
+
 import pytest
 
 from FlowStopper import ids
 from FlowStopper.cwe import get_cwe
 from FlowStopper.models import Engine, Finding, SastResult, Severity
+from FlowStopper.sast import index as index_module
 from FlowStopper.sast.runner import run_sast
 from tests.sast_helpers import make_tree
 
@@ -144,6 +147,21 @@ def test_stats_are_counts_only(result):
     assert stats["functions_analysed"] == stats["functions"]
     assert stats["summary_iterations"] >= 1
     assert all(isinstance(v, int) for k, v in stats.items() if k != "skipped")
+
+
+def test_run_sast_parses_each_python_file_once(tmp_path, monkeypatch):
+    # P4-A3: every later stage (routes, call graph, taint, secrets, snippets) reuses the parsed tree.
+    calls: Counter[str] = Counter()
+    original = index_module.parse_source
+
+    def counting(source: str, filename: str):
+        calls[filename] += 1
+        return original(source, filename)
+
+    monkeypatch.setattr(index_module, "parse_source", counting)
+    run_sast(make_tree(tmp_path, APP))
+    expected = {path: 1 for path in APP if path.endswith(".py")}
+    assert dict(calls) == expected
 
 
 def test_two_scans_of_one_tree_serialise_identically(tmp_path):

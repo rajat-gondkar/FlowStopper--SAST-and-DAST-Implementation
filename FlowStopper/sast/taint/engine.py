@@ -31,6 +31,7 @@ from dataclasses import dataclass, field, replace
 from typing import Optional
 
 from FlowStopper.models import ParamLocation
+from FlowStopper.sast import suppress
 from FlowStopper.sast.config import SastConfig
 from FlowStopper.sast.index import FunctionInfo, ModuleContext
 from FlowStopper.sast.routes.resolver import const_str
@@ -76,8 +77,19 @@ PROPAGATOR_METHODS: frozenset[str] = frozenset(
 )
 CONTAINER_GETTERS: frozenset[str] = frozenset({"get", "getlist", "getall", "pop", "setdefault"})
 STRING_CASTS: frozenset[str] = frozenset({"builtins.str", "builtins.bytes", "builtins.repr", "builtins.format"})
-# Statements after which the rest of a block is unreachable.
-_ABORT_CALLS: frozenset[str] = frozenset({"abort", "exit", "_exit", "fail"})
+# Calls after which the rest of a block is unreachable, by resolved name only (DECISIONS A-40).
+_ABORT_FUNCTIONS: frozenset[str] = frozenset(
+    {
+        "flask.abort",
+        "flask.helpers.abort",
+        "werkzeug.exceptions.abort",
+        "sys.exit",
+        "builtins.exit",
+        "builtins.quit",
+        "os._exit",
+        "os.abort",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -271,6 +283,7 @@ def source_value(ref: SourceRef, file: str, line: int, function: Optional[str]) 
         param_name=ref.param_name,
         location_kind=ref.location_kind,
         is_container=ref.is_container,
+        cleared=ref.cleared,
     )
     return TaintValue(labels=frozenset({label}))
 
@@ -320,6 +333,7 @@ class _FunctionWalk:
         self.derived: dict[str, frozenset[str]] = {}
         self.returned: Optional[TaintValue] = None  # None until the first `return`, so `"x"` stays constant
         self._seen: set[tuple] = set()
+        self._safe_responses: set[int] = set()  # ids of response calls given a safe content type later (A-38)
 
     def run(self, env: TaintEnv) -> WalkResult:
         out, _ = self._block(self.fn.node.body, env)
@@ -332,11 +346,21 @@ class _FunctionWalk:
 
     # ------------------------------------------------------------------ statements
     def _block(self, body: list[ast.stmt], env: TaintEnv) -> tuple[TaintEnv, bool]:
-        for stmt in body:
+        for i, stmt in enumerate(body):
+            if self._is_retyped_response(stmt, body[i + 1 :]):
+                self._safe_responses.add(id(stmt.value))
             env, exits = self._stmt(stmt, env)
             if exits:
                 return env, True
         return env, False
+
+    def _is_retyped_response(self, stmt: ast.stmt, rest: list[ast.stmt]) -> bool:
+        """`resp = Response(...)` whose following straight-line statements set a safe content type (A-38)."""
+        if not (isinstance(stmt, ast.Assign) and len(stmt.targets) == 1 and isinstance(stmt.targets[0], ast.Name)):
+            return False
+        if not isinstance(stmt.value, ast.Call) or sinks.sink_at(stmt.value, self.ctx) is not sinks.HTML_RESPONSE:
+            return False
+        return sinks.later_safe_content_type(rest, stmt.targets[0].id)
 
     def _stmt(self, stmt: ast.stmt, env: TaintEnv) -> tuple[TaintEnv, bool]:
         if isinstance(stmt, ast.Assign):
@@ -521,14 +545,8 @@ class _FunctionWalk:
         return out
 
     def _is_abort(self, expr: ast.expr) -> bool:
-        """`abort(404)` / `sys.exit()` end a block as surely as a `return` does."""
-        if not isinstance(expr, ast.Call):
-            return False
-        leaf = sinks.leaf_name(expr.func)
-        resolved = self.ctx.resolve(expr.func)
-        if resolved is not None and self.ctx.index.is_project_symbol(resolved):
-            return False
-        return leaf in _ABORT_CALLS
+        """`abort(404)` / `sys.exit()` end a block as surely as a `return` does (resolved callees only)."""
+        return isinstance(expr, ast.Call) and self.ctx.resolve(expr.func) in _ABORT_FUNCTIONS
 
     # ------------------------------------------------------------------ expressions
     def _expr(self, node: Optional[ast.expr], env: TaintEnv) -> TaintValue:
@@ -659,6 +677,8 @@ class _FunctionWalk:
         safe = sinks.safe_response_at(node, self.ctx)
         if safe is not None:
             return UNTAINTED  # jsonify / JSONResponse / a non-HTML content type: safe and a barrier
+        if id(node) in self._safe_responses:
+            return UNTAINTED  # its content type is set to a safe one right after construction (A-38)
 
         spec = sinks.sink_at(node, self.ctx)
         if spec is not None:
@@ -752,24 +772,68 @@ class _FunctionWalk:
         value = self._sink_value(node, spec, receiver, args, kwargs)
         if value is None:
             return
+        line_end = node.end_lineno or node.lineno
         if spec.requires_string_built and value.is_constant_string:
-            return  # a constant SQL string with tainted bind parameters is safe (spec P2-A3)
-        labels = value.tainted_for(spec.cwe)
-        if not labels:
+            # A constant SQL string with tainted bind parameters is safe (spec P2-A3): kept as a
+            # suppressed `safe:sql-parameterised` report so the decision is visible (A-47).
+            binds = self._bind_values(spec, args, kwargs)
+            if binds.tainted_for(spec.cwe):
+                bound = replace(binds, built=value.built, html_markup=value.html_markup)
+                self._sink_report(
+                    spec, bound, node.lineno, line_end, suppressed=True, reason=suppress.SAFE_SQL_PARAMETERISED
+                )
             return
         suppressed, reason = False, None
-        if spec.requires_shell and not sinks.shell_true(node):
+        if value.tainted_for(spec.cwe) and spec.requires_shell and not sinks.shell_true(node):
             argument = sinks.argument_node(node, spec)
             suppressed = True
             reason = sinks.SUPPRESS_LIST_NO_SHELL if sinks.is_sequence_argument(argument) else sinks.SUPPRESS_NO_SHELL
+        self._sink_report(spec, value, node.lineno, line_end, suppressed=suppressed, reason=reason)
+
+    @staticmethod
+    def _bind_values(spec: sinks.SinkSpec, args: tuple[TaintValue, ...], kwargs: dict[str, TaintValue]) -> TaintValue:
+        """Every argument of a sink call other than the one `spec` checks (the SQL bind parameters)."""
+        positional = 0 <= spec.arg_index < len(args)
+        out = UNTAINTED
+        for position, value in enumerate(args):
+            if not (positional and position == spec.arg_index):
+                out = out.union(value)
+        for name, value in kwargs.items():
+            if name not in spec.arg_keywords:
+                out = out.union(value)
+        return out
+
+    def _sink_report(
+        self,
+        spec: sinks.SinkSpec,
+        value: TaintValue,
+        line_start: int,
+        line_end: int,
+        *,
+        suppressed: bool = False,
+        reason: Optional[str] = None,
+    ) -> None:
+        """Report `value` reaching `spec`: its live labels, else its sanitised ones as suppressed (A-47).
+
+        Labels a sanitiser or guard cleared for the sink's CWE become one suppressed
+        `sanitized:<names>` report; a clearance with no sanitiser name behind it (the request URL
+        and CWE-601) reports nothing.
+        """
+        labels = value.tainted_for(spec.cwe)
+        if not labels:
+            reason = suppress.sanitized_reason(value.labels, spec.cwe)
+            if reason is None:
+                return
+            labels = frozenset(label for label in value.labels if spec.cwe in label.cleared)
+            suppressed = True
         self._add(
             SinkReport(
                 cwe=spec.cwe,
                 family=spec.rule_family,
                 token=spec.token,
                 file=self.fn.file,
-                line_start=node.lineno,
-                line_end=node.end_lineno or node.lineno,
+                line_start=line_start,
+                line_end=line_end,
                 function=self.fn.qualname,
                 chain=(self.fn.qualname,),
                 labels=labels,
@@ -812,51 +876,21 @@ class _FunctionWalk:
         if not unescaped:
             return
         spec = sinks.TEMPLATE_RENDER
-        context = sinks.template_context(node)
+        context = sinks.template_context(node, self._single_assignment)
         for variable in sorted(context):
             if variable not in unescaped:
                 continue
             value = self._expr(context[variable], env)  # visited once already; reports de-duplicate
-            labels = value.tainted_for(spec.cwe)
-            if not labels:
-                continue
-            self._add(
-                SinkReport(
-                    cwe=spec.cwe,
-                    family=spec.rule_family,
-                    token=spec.token,
-                    file=self.fn.file,
-                    line_start=node.lineno,
-                    line_end=node.end_lineno or node.lineno,
-                    function=self.fn.qualname,
-                    chain=(self.fn.qualname,),
-                    labels=labels,
-                    built=value.built,
-                    html_markup=value.html_markup,
-                )
-            )
+            self._sink_report(spec, value, node.lineno, node.end_lineno or node.lineno)
+
+    def _single_assignment(self, name: str) -> Optional[ast.expr]:
+        """The value of local `name` when it is assigned exactly once in this function, else None (A-39)."""
+        values = self.fn.assignments.get(name, [])
+        return values[0] if len(values) == 1 else None
 
     def _response_sink(self, value: TaintValue, stmt: ast.Return) -> None:
         """A route handler's return value is an HTML response (A-10)."""
-        spec = sinks.HANDLER_RETURN
-        labels = value.tainted_for(spec.cwe)
-        if not labels:
-            return
-        self._add(
-            SinkReport(
-                cwe=spec.cwe,
-                family=spec.rule_family,
-                token=spec.token,
-                file=self.fn.file,
-                line_start=stmt.lineno,
-                line_end=stmt.end_lineno or stmt.lineno,
-                function=self.fn.qualname,
-                chain=(self.fn.qualname,),
-                labels=labels,
-                built=value.built,
-                html_markup=value.html_markup,
-            )
-        )
+        self._sink_report(sinks.HANDLER_RETURN, value, stmt.lineno, stmt.end_lineno or stmt.lineno)
 
     def _header_sink(self, target: ast.Subscript, value: TaintValue) -> None:
         if not (sinks.is_redirect_header(target.value) and sinks.is_redirect_header_key(target.slice)):
@@ -872,25 +906,7 @@ class _FunctionWalk:
         self._location_report(args[1], node.lineno, node.end_lineno or node.lineno)
 
     def _location_report(self, value: TaintValue, line_start: int, line_end: int) -> None:
-        spec = sinks.LOCATION_HEADER
-        labels = value.tainted_for(spec.cwe)
-        if not labels:
-            return
-        self._add(
-            SinkReport(
-                cwe=spec.cwe,
-                family=spec.rule_family,
-                token=spec.token,
-                file=self.fn.file,
-                line_start=line_start,
-                line_end=line_end,
-                function=self.fn.qualname,
-                chain=(self.fn.qualname,),
-                labels=labels,
-                built=value.built,
-                html_markup=value.html_markup,
-            )
-        )
+        self._sink_report(sinks.LOCATION_HEADER, value, line_start, line_end)
 
     def _add(self, report: SinkReport) -> None:
         key = report.dedupe_key
