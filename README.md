@@ -59,8 +59,8 @@ FlowStopper report --issues out/issues.json -f html -o report.html
 - **Scope guard:** DAST only contacts allow-listed hosts (`ALLOWED_HOSTS`, default
   `localhost,127.0.0.1,::1`). Any other hostname is refused even if it resolves to a private
   IP; the guard re-checks on every redirect hop and refuses non-http(s) schemes. Locally run
-  targets — the organisers' app, our mock apps, and third-party **benchmark** apps (e.g. OWASP
-  PyGoat) — are allow-listed through `ALLOWED_HOSTS` config, never hardcoded (rule R3).
+  targets — the organisers' app, our mock apps, and third-party **benchmark** apps (e.g. the we45
+  Vulnerable-Flask-App) — are allow-listed through `ALLOWED_HOSTS` config, never hardcoded (rule R3).
 - **Harmless payloads only:** canaries, arithmetic echoes and a read-only `/etc/passwd` probe,
   taken solely from the payload catalogue (spec Appendix B). No destructive, persistent or
   exfiltrating payloads; no DELETE, and no PUT/PATCH unless `--allow-mutating` is passed.
@@ -77,20 +77,21 @@ answer key in `keys/answer_key.json` locally; see [`docs/SETUP.md`](docs/SETUP.m
 
 ## Benchmarking against a third-party app
 
-To measure generalisation on a real, independently written app, we scan **OWASP PyGoat** (Django,
-MIT) locally. Its source is **not vendored** — it is cloned at a pinned commit into a git-ignored
-`bench/pygoat/src/` and run via Docker Compose:
+To measure generalisation on a real, independently written app, we scan the **we45
+Vulnerable-Flask-App** (Flask — our best-fit framework) locally, with the authors' permission. Its
+source is **not vendored** — it is cloned at a pinned commit into a git-ignored
+`bench/vulnerable-flask-app/src/` and run via Docker Compose:
 
 ```bash
-make bench-fetch     # clone PyGoat @ v2.0.1 (git-ignored) and start it via Docker Compose
-make bench           # full pipeline + eval -> docs/metrics/bench_pygoat.json (not part of make check)
+make bench-fetch     # clone the Flask app @ pinned commit (git-ignored) and start it via Docker Compose
+make bench           # full pipeline + eval -> docs/metrics/bench_vulnerable-flask-app.json (not part of make check)
 make bench-down      # stop it
 ```
 
-Our hand-written, source-verified answer key is `bench/pygoat/answer_key.json`; details and caveats
-(PyGoat labs require an authenticated session) are in [`bench/pygoat/README.md`](bench/pygoat/README.md).
-Choice and pinned commit: [`docs/DECISIONS.md`](docs/DECISIONS.md) D-15; credit:
-[`THIRD_PARTY.md`](THIRD_PARTY.md).
+Our hand-written, source-verified answer key is `bench/vulnerable-flask-app/answer_key.json`; details
+and caveats (Python 2.7 app; JWT-gated endpoints) are in
+[`bench/vulnerable-flask-app/README.md`](bench/vulnerable-flask-app/README.md). Choice and pinned
+commit: [`docs/DECISIONS.md`](docs/DECISIONS.md) D-16; credit: [`THIRD_PARTY.md`](THIRD_PARTY.md).
 
 ## How correlation works
 

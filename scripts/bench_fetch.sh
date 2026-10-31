@@ -1,28 +1,26 @@
 #!/usr/bin/env bash
 # Fetch and run a third-party benchmark target locally.
 #
-# We DO NOT vendor its source (rule R1 / licence hygiene): the app is cloned at a PINNED commit
-# into bench/<app>/src/ (git-ignored) and run via Docker Compose using our own thin override.
-# Choice + pin rationale: docs/DECISIONS.md (D-15). Licence + credit: THIRD_PARTY.md.
+# We DO NOT vendor its source: the app is cloned at a PINNED commit into bench/<app>/src/
+# (git-ignored) and run via Docker Compose using OUR OWN bench/<app>/docker-compose.yml (the upstream
+# repo ships only a Dockerfile). Choice, pin and usage permission: docs/DECISIONS.md D-15.
+# Licence + credit: THIRD_PARTY.md.
 #
 # Usage: scripts/bench_fetch.sh {clone|up|down|all}   (default: all = clone + up)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-APP="pygoat"
-REPO="https://github.com/adeyosemanputra/pygoat.git"
-# v2.0.1 is the classic, lightweight Django PyGoat (simple docker-compose, OWASP labs in
-# introduction/views.py). We deliberately avoid v3.x, which runs traefik + per-lab Docker-in-Docker
-# containers and is a poor static-analysis target. See docs/DECISIONS.md (D-15).
-TAG="v2.0.1"
-# Exact commit for reproducibility; verified after checkout. Bump TAG and SHA together.
-SHA="c11e8429349cc05ff38564d3bf7ef09fb2411874"
+APP="vulnerable-flask-app"
+REPO="https://github.com/we45/Vulnerable-Flask-App.git"
+# The upstream repo has no release tags; we pin the exact commit on master and verify after checkout.
+# Open source; usage permitted by the authors (we45) for this event. See docs/DECISIONS.md D-15.
+SHA="b6a4f97afd466e83e1f60781494252dec1c37039"
 
 SRC="bench/$APP/src"
 PROJECT="flowstopper-bench-$APP"
 # Published on 127.0.0.1 only. 8100 avoids API 8000 / Mock A 5050 / Mock B 8090.
 export BENCH_PORT="${BENCH_PORT:-8100}"
-COMPOSE=(docker compose -p "$PROJECT" -f "$SRC/docker-compose.yml" -f "bench/$APP/compose.override.yml")
+COMPOSE=(docker compose -p "$PROJECT" -f "bench/$APP/docker-compose.yml")
 
 clone() {
   if [ -d "$SRC/.git" ] && [ "$(git -C "$SRC" rev-parse HEAD 2>/dev/null || true)" = "$SHA" ]; then
@@ -31,14 +29,14 @@ clone() {
   fi
   rm -rf "$SRC"
   mkdir -p "$(dirname "$SRC")"
-  echo "[bench] cloning $REPO @ $TAG"
-  git clone --quiet --branch "$TAG" --depth 1 "$REPO" "$SRC"
-  got="$(git -C "$SRC" rev-parse HEAD)"
-  if [ "$got" != "$SHA" ]; then
-    echo "[bench] ERROR: tag $TAG resolved to $got, expected $SHA (tag moved?)."
-    echo "[bench] Refusing to continue for reproducibility. Update SHA in this script if intended."
+  echo "[bench] cloning $REPO"
+  git clone --quiet "$REPO" "$SRC"
+  git -C "$SRC" checkout --quiet "$SHA" 2>/dev/null || {
+    echo "[bench] ERROR: commit $SHA not found in $REPO (history changed?). Update SHA in this script."
     exit 1
-  fi
+  }
+  got="$(git -C "$SRC" rev-parse HEAD)"
+  [ "$got" = "$SHA" ] || { echo "[bench] ERROR: HEAD $got != pinned $SHA"; exit 1; }
   echo "[bench] checked out $got"
 }
 

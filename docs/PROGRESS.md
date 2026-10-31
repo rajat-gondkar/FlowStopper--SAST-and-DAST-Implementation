@@ -34,15 +34,15 @@ lock files, `scripts/doctor.py`, Kiro steering. All module stubs created with ow
 ## Phase 3 — integration ⬜  ·  ## Phase 4 — accuracy & bonuses ⬜
 ## Phase 5 — delivery surface ⬜  ·  ## Phase 6 — generalisation ⬜  ·  ## Phase 7 — release ⬜
 
-## Third-party benchmark (OWASP PyGoat) — cross-phase
+## Third-party benchmark (we45 Vulnerable-Flask-App) — cross-phase
 
 | Item | Owner | Status | Notes |
 |---|---|---|---|
-| Choose app + log (D-15) | A | ✅ | PyGoat v2.0.1, MIT (we45 rejected: no licence; v3.x rejected: docker-in-docker) |
+| Choose app + log (D-16) | A | ✅ | we45 Vulnerable-Flask-App, used with authors' permission (Flask = best fit); superseded PyGoat (D-15) |
 | `make bench-fetch` (clone@pin + compose) | A | ✅ | `scripts/bench_fetch.sh`; src git-ignored, SHA-verified |
-| Answer key (source-verified) | A | ✅ | `bench/pygoat/answer_key.json`: 4 pairs + 1 code-only + 2 runtime-only; validates |
+| Answer key (source-verified) | A | ✅ | `bench/vulnerable-flask-app/answer_key.json`: 2 pairs + 2 code-only + 1 runtime-only; validates |
 | Scope via config (R3) + spec/README wording | A | ✅ | `ALLOWED_HOSTS` in `make bench`; no FlowStopper/ edits |
-| `make bench` → `docs/metrics/bench_pygoat.json` | A | ✅ wiring | produces metrics once scan (P3-A1) + eval (P1-B5/P3-B1) land; not gating check |
+| `make bench` → `docs/metrics/bench_vulnerable-flask-app.json` | A | ✅ wiring | produces metrics once scan (P3-A1) + eval (P1-B5/P3-B1) land; not gating check |
 | R6 guard extended to bench key | A | ✅ | `tests/test_no_overfit.py` globs `bench/*/answer_key.json` |
 | Credit in THIRD_PARTY (outside own work) | A | ✅ | MIT + pinned commit |
 | Dev B touch-points flagged | A→B | ⬜ ACK | `docs/CONTRACT_CHANGES.md` CC-01 (scope env, generic eval) |
@@ -56,3 +56,9 @@ _Log_
   Dev B ACK. `make check` still green.
 - 2026-10-31 — Policy: Kiro must NOT push to GitHub; Person 1 pushes manually (recorded in SETUP,
   PLAN, AGENTS, steering, per-person docs).
+- 2026-10-31 — Benchmark target switched from PyGoat to the **we45 Vulnerable-Flask-App** (Flask, best
+  framework fit; authors granted usage permission). D-16 supersedes D-15; bench dir, key, Compose,
+  credit and all references updated. `make check` still green.
+- 2026-10-31 — Push policy hardened into a **hard block**: a PreToolUse hook
+  (`.kiro/hooks/block-git-writes.json` + `scripts/git_guard.py`) refuses any agent shell command that
+  runs `git add`, `git commit` or `git push`. Person 1 still does all staging/committing/pushing.

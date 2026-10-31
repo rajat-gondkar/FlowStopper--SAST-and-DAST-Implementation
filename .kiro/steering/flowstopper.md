@@ -20,8 +20,10 @@ parallel. Authoritative docs: `FlowStopper_BUILD_SPEC.md` (source of truth), `do
   write generic rules. `tests/test_no_overfit.py` enforces this.
 - **Never** add DAST payloads outside spec Appendix B (R4), bypass `scope.py` (R3), or import/execute
   target source in SAST (R7).
-- **Never** `git push`, create a remote, or push tags/branches to GitHub. Commit locally only —
-  **Person 1 (a human) performs all pushes manually.**
+- **Never** run `git add`, `git commit`, or `git push` — they are **hard-blocked** by the
+  `block-git-writes` PreToolUse hook (`scripts/git_guard.py`, exit 2). Make file changes only;
+  **Person 1 (a human) stages, commits and pushes.** Other git commands (status/diff/log/checkout/
+  merge/clone) are fine.
 
 ## Compliance (R1–R8) is enforced by tests
 Don't weaken a test to pass. Correctness > speed. Prefer a missed correlation link over a wrong one.

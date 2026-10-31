@@ -1,0 +1,70 @@
+{
+  "schema_version": "1",
+  "app": "vulnerable-flask-app",
+  "language": "python",
+  "framework": "flask",
+  "base_url": "http://127.0.0.1:8100",
+  "vulns": [
+    {
+      "id": "VF01",
+      "cwe": 89,
+      "kind": "pair",
+      "title": "SQL injection in /search (raw SQL built with %-formatting, run via db.engine.execute)",
+      "code": {
+        "file": "app/app.py",
+        "line_start": 259,
+        "line_end": 265,
+        "function": "search_customer"
+      },
+      "runtime": {"method": "POST", "path": "/search", "param": "search"},
+      "notes": "request.json['search'] is %-formatted into str_query and passed to db.engine.execute() (line 265). JSON body param. Requires a valid JWT: POST /login {\"username\":\"admin\",\"password\":\"admin123\"} returns the token in the Authorization response header; send it as Authorization on /search."
+    },
+    {
+      "id": "VF02",
+      "cwe": 79,
+      "kind": "pair",
+      "title": "Reflected XSS / SSTI via render_template_string in the 404 handler (reflects request.url)",
+      "code": {
+        "file": "app/app.py",
+        "line_start": 102,
+        "line_end": 114,
+        "function": "pnf"
+      },
+      "runtime": {"method": "GET", "path": "*", "param": null},
+      "notes": "UNCERTAIN detectability/classification: the 404 handler builds an HTML template with '%s' % request.url and passes it to render_template_string (line 114), so any unknown path reflects the URL unescaped (DAST-detectable as reflected XSS; it is also SSTI/CWE-94). SAST is unlikely to flag it: request.url is not in our taint-source list and render_template_string is not a standard sink. render_template_string is also reached in the /search error path (line 281) reflecting the 'search' term. No auth needed for the 404 path."
+    },
+    {
+      "id": "VF03",
+      "cwe": 798,
+      "kind": "code_only",
+      "title": "Hard-coded Flask secret_key",
+      "code": {
+        "file": "app/app.py",
+        "line_start": 28,
+        "line_end": 28
+      },
+      "notes": "app.secret_key assigned a literal string (session signing key). Code-only."
+    },
+    {
+      "id": "VF04",
+      "cwe": 798,
+      "kind": "code_only",
+      "title": "Hard-coded JWT HMAC signing key (SECRET_KEY_HMAC)",
+      "code": {
+        "file": "app/app.py",
+        "line_start": 26,
+        "line_end": 26
+      },
+      "notes": "app.config['SECRET_KEY_HMAC'] = 'secret' (literal); used to sign/verify JWTs at lines 86 and 184. A second literal key SECRET_KEY_HMAC_2 is on line 27. Code-only."
+    },
+    {
+      "id": "VF05",
+      "cwe": 693,
+      "kind": "runtime_only",
+      "title": "Missing security headers (no Content-Security-Policy, host-wide)",
+      "runtime": {"method": "GET", "path": "*", "param": null},
+      "notes": "UNCERTAIN runtime manifestation: a default Flask app sets no Content-Security-Policy (and no X-Frame-Options unless Flask-Talisman/manual), so responses are expected to lack CSP. Confirm the exact missing-header set against a live instance."
+    }
+  ],
+  "decoys": []
+}

@@ -18,9 +18,9 @@ rule-R5 hygiene). On macOS, `python3.12` comes from Homebrew (`brew install pyth
 
 ## Person 1 — initialise and push (once)
 
-> **Pushing is always done by a human (Person 1), never by an AI agent.** Kiro commits locally only;
-> it will not run `git push`, create a remote, or push tags on your behalf. Run the commands below
-> yourself.
+> **Git writes are human-only (Person 1), never the AI agent.** `git add`, `git commit` and `git push`
+> are **hard-blocked** for the agent by the `block-git-writes` PreToolUse hook (`scripts/git_guard.py`);
+> Kiro makes file changes only. Run the commands below yourself.
 
 Person 1 already built the scaffold. To publish it:
 
@@ -77,8 +77,9 @@ git checkout main && git pull && git merge --no-ff a/P1-A1 && git push
 ```
 
 Rules of the road:
-- **Agents never push.** AI agents (Kiro) commit locally only; a human runs every `git push` and
-  pushes tags. If you drive an agent, do the `git push` / `git merge` to `main` yourself.
+- **Agents never stage/commit/push.** `git add` / `git commit` / `git push` are hard-blocked for AI
+  agents (the `block-git-writes` hook); a human runs them. If you drive an agent, do the `git add`,
+  `git commit`, `git merge` to `main` and `git push` yourself.
 - **Never edit the other dev's files** (ownership in [`PLAN.md`](PLAN.md)). If you need a shared-
   contract change, append to [`CONTRACT_CHANGES.md`](CONTRACT_CHANGES.md) and get an ack first.
 - Update [`PROGRESS.md`](PROGRESS.md) at the end of every task; log any judgement call in

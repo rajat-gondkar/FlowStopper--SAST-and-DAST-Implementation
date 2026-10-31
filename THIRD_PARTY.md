@@ -72,16 +72,17 @@ Core analysis uses the Python standard library: `ast` (all SAST parsing — rule
 
 Used only as **scan targets** to measure generalisation to a real, independently written app. Their
 source is **not vendored**: `scripts/bench_fetch.sh` clones each at a pinned commit into a git-ignored
-`bench/<app>/src/` and runs it locally via Docker Compose (see `docs/DECISIONS.md` D-15). We ship only
-our own answer key and compose override for them.
+`bench/<app>/src/` and runs it locally via Docker Compose (see `docs/DECISIONS.md` D-16). We ship only
+our own answer key, Compose wrapper and README for them.
 
-| App | Version / pinned commit | Licence | Role |
+| App | Pinned commit | Licence / permission | Role |
 |---|---|---|---|
-| [OWASP PyGoat](https://github.com/adeyosemanputra/pygoat) | tag `v2.0.1` (`c11e8429349cc05ff38564d3bf7ef09fb2411874`) | MIT | Third-party Django benchmark target; intentionally vulnerable OWASP teaching app |
+| [we45 Vulnerable-Flask-App](https://github.com/we45/Vulnerable-Flask-App) | `b6a4f97afd466e83e1f60781494252dec1c37039` | No licence file; **used with the authors' (we45) explicit permission** for this event | Third-party Flask benchmark target (intentionally vulnerable) |
 
-PyGoat is © its authors under the MIT licence; we neither modify nor redistribute it. Our own files
-for it (`bench/pygoat/answer_key.json`, `bench/pygoat/compose.override.yml`, `bench/pygoat/README.md`)
-are our work and are listed under "own work" below.
+The app is © its authors; it carries no licence file, so we use it **only under the permission the
+authors (we45) granted us** for this event, and we neither modify nor redistribute it. Our own files
+for it (`bench/vulnerable-flask-app/answer_key.json`, `bench/vulnerable-flask-app/docker-compose.yml`,
+`bench/vulnerable-flask-app/README.md`) are our work and are listed under "own work" below.
 
 ## Own work (not third-party)
 

@@ -25,8 +25,11 @@ of AI tools is disclosed in `THIRD_PARTY.md`, rule R2.)
   - R7: SAST parses, never imports/executes target code; reports HTML-escape all evidence.
 - **Determinism:** sorted outputs, stable IDs via `ids.py`, seeded randomness. Don't introduce
   nondeterministic ordering or timestamps into IDs or sorted lists.
-- **Never push.** Commit locally only. Do **not** run `git push`, create remotes, or push tags/
-  branches — Person 1 (a human) performs all pushes to GitHub manually. Leave the remote to them.
+- **Never stage, commit, or push.** `git add`, `git commit` and `git push` are **hard-blocked** for the
+  agent by the `block-git-writes` PreToolUse hook (`.kiro/hooks/block-git-writes.json` →
+  `scripts/git_guard.py`, exit 2). Make file changes only and report what you changed; Person 1 (a
+  human) does all staging, committing and pushing. Other git commands (status, diff, log, clone,
+  checkout, merge) are fine.
 
 ## Conventions
 - Python 3.11+; type hints on public functions; `ruff` clean (line-length 120, `make fmt` to autofix).

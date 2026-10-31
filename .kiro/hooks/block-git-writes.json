@@ -1,0 +1,15 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Block agent git add/commit/push",
+      "trigger": "PreToolUse",
+      "description": "Refuses any agent shell command that runs `git add`, `git commit`, or `git push` (exit 2 = block). Person 1 stages, commits and pushes manually. Other git commands are allowed.",
+      "matcher": "bash",
+      "action": {
+        "type": "command",
+        "command": "python3 scripts/git_guard.py"
+      }
+    }
+  ]
+}

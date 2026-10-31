@@ -4,8 +4,9 @@ You are **Person 1 / Dev A**. You did the repository initialisation, so most of 
 already done (see the checkmarks). Work top to bottom. Every task ends with `make check` green
 and a one-line update in [`PROGRESS.md`](PROGRESS.md). Branch per task `a/<task-id>`, merge to
 `main` after check passes. **Never edit Dev B's files** (see [`PLAN.md`](PLAN.md) ownership);
-**do not open `apps/mock_b/` until Phase 6.** **You (a human) perform all `git push`es and own the
-GitHub remote — AI agents commit locally only and never push.**
+**do not open `apps/mock_b/` until Phase 6.** **You (a human) do all `git add` / `git commit` /
+`git push` and own the GitHub remote — these are hard-blocked for AI agents by the `block-git-writes`
+hook; agents change files only.**
 
 Your ownership: `FlowStopper/sast/**`, `apps/mock_a/**`, `FlowStopper/cli.py`,
 `FlowStopper/api.py`, `FlowStopper/pipeline.py`, and the repo scaffold/docs.

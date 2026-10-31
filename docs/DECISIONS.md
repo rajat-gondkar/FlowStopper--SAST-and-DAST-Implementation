@@ -3,8 +3,28 @@
 One line per decision (spec rule: when a detail is ambiguous, pick the simpler option, record it,
 continue). Newest first.
 
-- **D-15 (third-party benchmark app):** chose **OWASP PyGoat** (`adeyosemanputra/pygoat`) pinned at
-  tag **`v2.0.1`** (`c11e8429349cc05ff38564d3bf7ef09fb2411874`), MIT. Evaluated the candidates:
+- **D-17 (git writes hard-blocked for the agent):** the no-auto-push rule is now enforced
+  mechanically, not just documented. A PreToolUse hook (`.kiro/hooks/block-git-writes.json`, matcher
+  `bash`) runs `scripts/git_guard.py`, which exits 2 (block) on any agent shell command that invokes
+  `git add`, `git commit` or `git push` (handles chained commands and `-C`/`-c` forms; command-position
+  anchored so quoted mentions like `grep "git push"` are allowed). Other git commands (status, diff,
+  log, clone, checkout, merge, tag, rev-parse, check-ignore) stay allowed. Person 1 does all staging,
+  committing and pushing. Active from the next session start.
+- **D-16 (benchmark app switched to the Flask app):** replaced PyGoat (D-15) with the **we45
+  Vulnerable-Flask-App** (`we45/Vulnerable-Flask-App`), pinned at commit
+  `b6a4f97afd466e83e1f60781494252dec1c37039` (master; no tags). The authors (we45) **granted us
+  permission** to use it for this event; the repo ships no licence file, so use is by that grant
+  (recorded in `THIRD_PARTY.md`). Chosen because **Flask is our primary / best-fit framework** — the
+  earlier licence blocker in D-15 is resolved by the permission. Trade-offs, documented and accepted:
+  it is a Python 2.7 app (the source is still py3-**parseable**, so parse-only SAST works; the Docker
+  build uses old wheels and can be brittle on modern hosts — affects only the DAST side), and most
+  endpoints are JSON APIs behind JWT auth (`admin`/`admin123`), so the reflected-XSS finding is
+  realistically a runtime detection. Not vendored (cloned into git-ignored
+  `bench/vulnerable-flask-app/src/`); scope via `ALLOWED_HOSTS` config only (R3); `make bench` never
+  gates `make check`. Mock A and Mock B are unchanged.
+- **D-15 (third-party benchmark app — SUPERSEDED by D-16):** chose **OWASP PyGoat**
+  (`adeyosemanputra/pygoat`) pinned at tag **`v2.0.1`** (`c11e8429349cc05ff38564d3bf7ef09fb2411874`),
+  MIT. Evaluated the candidates:
   *we45/Vulnerable-Flask-App* is Flask (best framework fit) but has **no licence** (all-rights-
   reserved) → fails the permissive-licence requirement; *DVPWA* is aiohttp and *DSVW* is stdlib
   `http.server` → neither is supported by our route extractors; *PyGoat* is Django + MIT + Docker

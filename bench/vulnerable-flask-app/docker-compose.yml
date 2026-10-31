@@ -1,0 +1,14 @@
+# FlowStopper's OWN Compose for the we45 Vulnerable-Flask-App benchmark. This is our orchestration
+# wrapper, NOT part of the app and NOT vendored. It builds the app's cloned Dockerfile (bench/<app>/src,
+# which ships only a Dockerfile) and publishes it on 127.0.0.1 only, on a non-clashing port. Used by
+# scripts/bench_fetch.sh.
+services:
+  flaskapp:
+    build:
+      context: ./src
+    image: flowstopper-bench-vulnerable-flask-app
+    environment:
+      - APP_PORT=5050
+    ports:
+      # host 127.0.0.1:${BENCH_PORT:-8100} -> container 5050 (the app's EXPOSE/listen port)
+      - "127.0.0.1:${BENCH_PORT:-8100}:5050"
