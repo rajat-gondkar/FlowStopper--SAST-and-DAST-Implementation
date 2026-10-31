@@ -34,7 +34,25 @@ lock files, `scripts/doctor.py`, Kiro steering. All module stubs created with ow
 ## Phase 3 — integration ⬜  ·  ## Phase 4 — accuracy & bonuses ⬜
 ## Phase 5 — delivery surface ⬜  ·  ## Phase 6 — generalisation ⬜  ·  ## Phase 7 — release ⬜
 
+## Third-party benchmark (OWASP PyGoat) — cross-phase
+
+| Item | Owner | Status | Notes |
+|---|---|---|---|
+| Choose app + log (D-15) | A | ✅ | PyGoat v2.0.1, MIT (we45 rejected: no licence; v3.x rejected: docker-in-docker) |
+| `make bench-fetch` (clone@pin + compose) | A | ✅ | `scripts/bench_fetch.sh`; src git-ignored, SHA-verified |
+| Answer key (source-verified) | A | ✅ | `bench/pygoat/answer_key.json`: 4 pairs + 1 code-only + 2 runtime-only; validates |
+| Scope via config (R3) + spec/README wording | A | ✅ | `ALLOWED_HOSTS` in `make bench`; no FlowStopper/ edits |
+| `make bench` → `docs/metrics/bench_pygoat.json` | A | ✅ wiring | produces metrics once scan (P3-A1) + eval (P1-B5/P3-B1) land; not gating check |
+| R6 guard extended to bench key | A | ✅ | `tests/test_no_overfit.py` globs `bench/*/answer_key.json` |
+| Credit in THIRD_PARTY (outside own work) | A | ✅ | MIT + pinned commit |
+| Dev B touch-points flagged | A→B | ⬜ ACK | `docs/CONTRACT_CHANGES.md` CC-01 (scope env, generic eval) |
+
 ---
 _Log_
 - 2026-10-31 — Repo initialised (Phase 0 scaffold). Contracts + fixtures + harness in place;
   `make check` green (38 tests). Ready for Person 2 to clone and for both to start Phase 1.
+- 2026-10-31 — Added third-party benchmark target OWASP PyGoat (`make bench-fetch` / `make bench`,
+  source-verified answer key, R3 scope-via-config, R6 guard extended, THIRD_PARTY credit). CC-01 awaits
+  Dev B ACK. `make check` still green.
+- 2026-10-31 — Policy: Kiro must NOT push to GitHub; Person 1 pushes manually (recorded in SETUP,
+  PLAN, AGENTS, steering, per-person docs).

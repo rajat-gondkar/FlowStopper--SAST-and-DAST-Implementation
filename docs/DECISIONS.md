@@ -3,6 +3,17 @@
 One line per decision (spec rule: when a detail is ambiguous, pick the simpler option, record it,
 continue). Newest first.
 
+- **D-15 (third-party benchmark app):** chose **OWASP PyGoat** (`adeyosemanputra/pygoat`) pinned at
+  tag **`v2.0.1`** (`c11e8429349cc05ff38564d3bf7ef09fb2411874`), MIT. Evaluated the candidates:
+  *we45/Vulnerable-Flask-App* is Flask (best framework fit) but has **no licence** (all-rights-
+  reserved) → fails the permissive-licence requirement; *DVPWA* is aiohttp and *DSVW* is stdlib
+  `http.server` → neither is supported by our route extractors; *PyGoat* is Django + MIT + Docker
+  Compose + maintained. Picked PyGoat on licence + runnability; accepted the trade-off that Django is
+  our shallowest extractor (cut-list), which makes it an honest generalisation signal. Pinned **v2.0.1
+  not v3.x**: v3 runs traefik + per-lab Docker-in-Docker containers (mounts the docker socket) and the
+  vulnerable code is not all in the Django source our SAST reads — a poor static-analysis target.
+  Not vendored (cloned at the pin into git-ignored `bench/pygoat/src/`). Scope via `ALLOWED_HOSTS`
+  config only (R3); no FlowStopper/ edits. `make bench` is never gated by `make check`.
 - **D-14 (Python):** Require 3.11+; version pins were resolved on Python 3.12 (no 3.11 on the init
   machine). `.python-version` = 3.12. Lock files note the resolver version.
 - **D-13 (lint):** ruff line-length 120; `E501` ignored because `ruff format` owns wrapping and we

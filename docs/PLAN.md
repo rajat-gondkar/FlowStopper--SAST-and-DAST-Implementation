@@ -85,4 +85,5 @@ suppression, eval harness, README, THIRD_PARTY.
 Trunk-based. Short-lived branches `a/<task-id>` and `b/<task-id>`; merge to `main` only after
 `make check` passes. Commit small and often. Tag `contract-v1` once both devs confirm the
 contracts; tag `v1.0` at release and freeze. Details and the two-person bootstrap are in
-[`SETUP.md`](SETUP.md).
+[`SETUP.md`](SETUP.md). **AI agents never push: they commit locally only; Person 1 (a human)
+performs all `git push`es and tag pushes to GitHub manually.**

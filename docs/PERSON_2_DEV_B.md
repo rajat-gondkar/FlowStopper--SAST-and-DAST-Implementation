@@ -4,7 +4,8 @@ You are **Person 2 / Dev B**. Person 1 initialised and pushed the repo; start by
 running it (see [`SETUP.md`](SETUP.md) → `make setup && make check && make doctor`). Then work
 top to bottom. Every task ends with `make check` green and a one-line update in
 [`PROGRESS.md`](PROGRESS.md). Branch per task `b/<task-id>`, merge to `main` after check passes.
-**Never edit Dev A's files** (see [`PLAN.md`](PLAN.md) ownership).
+**Never edit Dev A's files** (see [`PLAN.md`](PLAN.md) ownership). **Pushing is manual and human-only
+(Person 1 owns the remote); AI agents commit locally only and never push.**
 
 Your ownership: `FlowStopper/config.py`, `storage.py`, `scope.py`, `cvss.py`,
 `FlowStopper/dast/**`, `FlowStopper/correlate/**`, `FlowStopper/report/**`,

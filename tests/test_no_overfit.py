@@ -1,9 +1,10 @@
 """R6 no-overfitting guard (shared).
 
 Collects app-specific strings (file paths, route paths, qualified function names) from every
-answer key present locally - keys/*.json (git-ignored, organisers' app), apps/*/answer_key.json
-and fixtures/answer_key.json - and fails if any appears inside a string literal in FlowStopper/.
-Comments and docstrings are ignored, so documentation examples are fine.
+answer key present locally - keys/*.json (git-ignored, organisers' app), apps/*/answer_key.json,
+bench/*/answer_key.json (third-party benchmark apps) and fixtures/answer_key.json - and fails if
+any appears inside a string literal in FlowStopper/. Comments and docstrings are ignored, so
+documentation examples are fine.
 """
 
 from __future__ import annotations
@@ -20,7 +21,9 @@ MIN_LEN = 5
 
 
 def _key_files() -> list[Path]:
-    files = sorted((ROOT / "keys").glob("*.json")) + sorted((ROOT / "apps").glob("*/answer_key.json"))
+    files = sorted((ROOT / "keys").glob("*.json"))
+    files += sorted((ROOT / "apps").glob("*/answer_key.json"))
+    files += sorted((ROOT / "bench").glob("*/answer_key.json"))
     return files + [ROOT / "fixtures" / "answer_key.json"]
 
 

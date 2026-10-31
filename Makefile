@@ -5,7 +5,7 @@ VENV   := .venv
 PY     := $(VENV)/bin/python
 
 .DEFAULT_GOAL := help
-.PHONY: help setup lint fmt test check schemas fixtures lock doctor validate-key demo clean
+.PHONY: help setup lint fmt test check schemas fixtures lock doctor validate-key demo bench-fetch bench bench-down clean
 
 help: ## list targets
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z_-]+:.*## / {printf "  %-13s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -51,6 +51,15 @@ validate-key: $(PY) ## validate an answer key: make validate-key KEY=keys/answer
 
 demo: ## start Mock A and scan it end to end (implemented in P5-A3)
 	@echo "make demo is implemented in P5-A3 (Dev A)."; exit 1
+
+bench-fetch: ## clone the pinned third-party benchmark app (git-ignored) and run it via Docker Compose
+	./scripts/bench_fetch.sh all
+
+bench: $(PY) ## scan + eval the benchmark app -> docs/metrics/bench_<app>.json (run `make bench-fetch` first; never gates check)
+	FS=$(abspath $(PY:python=FlowStopper)) ./scripts/bench.sh
+
+bench-down: ## stop the benchmark app
+	./scripts/bench_fetch.sh down
 
 clean: ## remove caches and scan outputs (keeps .venv)
 	rm -rf .pytest_cache .ruff_cache build *.egg-info out

@@ -25,4 +25,24 @@ the freeze without an explicit joint decision recorded here.
 
 ## Log
 
-_(none yet — contracts not yet frozen. Add entries below once `contract-v1` is tagged.)_
+### CC-01 — Third-party benchmark target (PyGoat): Dev B touch-points (no contract change)
+- Date / Author: 2026-10-31 / Dev A (Person 1)
+- Files: none of Dev B's files were edited. This entry flags two Dev-B-owned couplings the benchmark
+  relies on, for ACK — no change to any frozen contract (`models.py`/`cwe.py`/`ids.py`/`keyschema.py`).
+- Context: added `make bench-fetch` / `make bench` + `bench/pygoat/` (answer key, compose override).
+  All new code is Dev-A-owned (Makefile, `scripts/bench_fetch.sh`, `scripts/bench.sh`) plus an additive
+  one-line widening of the shared R6 guard `tests/test_no_overfit.py` (now also globs
+  `bench/*/answer_key.json`).
+- Ask of Dev B (ownership: `scope.py`, `config.py`, `evalkit/metrics.py`) — **no edits requested now**,
+  just confirm these behave generically when you implement them:
+  1. **Scope (R3):** `scope.py`/`config.py` must honor the `ALLOWED_HOSTS` env var and merge in extra
+     hosts (already your P0-B1 plan). `make bench` passes `ALLOWED_HOSTS=localhost,127.0.0.1,::1,pygoat`
+     so the benchmark host is allow-listed **via config only** — please do not hardcode any bench host
+     in `FlowStopper/` (R6). No new field required (`DastConfig.allowed_hosts` already covers it).
+  2. **Eval/metrics:** `make bench` calls `FlowStopper eval --key bench/pygoat/answer_key.json
+     --issues … --out docs/metrics/bench_pygoat.json`. `evalkit/metrics.py` must stay **generic over
+     any Appendix-C key** (no app-specific logic). The bench key uses only existing schema fields.
+- Impact on fixtures/schemas: none.
+- ACK by Dev B: ____  (pending)
+
+_(Contracts not yet frozen; once `contract-v1` is tagged, add further entries above.)_

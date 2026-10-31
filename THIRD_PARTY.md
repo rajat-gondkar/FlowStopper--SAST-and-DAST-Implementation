@@ -68,6 +68,21 @@ Transitive runtime dependencies (installed automatically, pinned in `requirement
 Core analysis uses the Python standard library: `ast` (all SAST parsing — rule R7, parse only),
 `sqlite3` (storage), `hashlib` (stable IDs), `re`, `urllib`, `html`, `json`, `pathlib`.
 
+## Third-party benchmark targets (development/evaluation only — NOT our work)
+
+Used only as **scan targets** to measure generalisation to a real, independently written app. Their
+source is **not vendored**: `scripts/bench_fetch.sh` clones each at a pinned commit into a git-ignored
+`bench/<app>/src/` and runs it locally via Docker Compose (see `docs/DECISIONS.md` D-15). We ship only
+our own answer key and compose override for them.
+
+| App | Version / pinned commit | Licence | Role |
+|---|---|---|---|
+| [OWASP PyGoat](https://github.com/adeyosemanputra/pygoat) | tag `v2.0.1` (`c11e8429349cc05ff38564d3bf7ef09fb2411874`) | MIT | Third-party Django benchmark target; intentionally vulnerable OWASP teaching app |
+
+PyGoat is © its authors under the MIT licence; we neither modify nor redistribute it. Our own files
+for it (`bench/pygoat/answer_key.json`, `bench/pygoat/compose.override.yml`, `bench/pygoat/README.md`)
+are our work and are listed under "own work" below.
+
 ## Own work (not third-party)
 
 Written from scratch by the team for this event (rule R1, R8):
@@ -77,6 +92,8 @@ Written from scratch by the team for this event (rule R1, R8):
 - `apps/mock_a/` (Flask shop) and `apps/mock_b/` (FastAPI shop) — our own development and
   regression fixtures, clearly labelled as our own work. They are **not** the evaluation
   target; only the organisers' app is scanned during evaluation (rule R8).
+- Our files under `bench/<app>/` (answer keys, compose overrides, READMEs) — but **not** the
+  benchmark apps' own source, which is third-party (see the section above) and never committed.
 - All fixtures, tests, scripts and documentation.
 
 > Verify every licence and version against PyPI before the final submission (task P7-A2).

@@ -25,6 +25,8 @@ of AI tools is disclosed in `THIRD_PARTY.md`, rule R2.)
   - R7: SAST parses, never imports/executes target code; reports HTML-escape all evidence.
 - **Determinism:** sorted outputs, stable IDs via `ids.py`, seeded randomness. Don't introduce
   nondeterministic ordering or timestamps into IDs or sorted lists.
+- **Never push.** Commit locally only. Do **not** run `git push`, create remotes, or push tags/
+  branches — Person 1 (a human) performs all pushes to GitHub manually. Leave the remote to them.
 
 ## Conventions
 - Python 3.11+; type hints on public functions; `ruff` clean (line-length 120, `make fmt` to autofix).

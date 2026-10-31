@@ -58,7 +58,9 @@ FlowStopper report --issues out/issues.json -f html -o report.html
 
 - **Scope guard:** DAST only contacts allow-listed hosts (`ALLOWED_HOSTS`, default
   `localhost,127.0.0.1,::1`). Any other hostname is refused even if it resolves to a private
-  IP; the guard re-checks on every redirect hop and refuses non-http(s) schemes.
+  IP; the guard re-checks on every redirect hop and refuses non-http(s) schemes. Locally run
+  targets — the organisers' app, our mock apps, and third-party **benchmark** apps (e.g. OWASP
+  PyGoat) — are allow-listed through `ALLOWED_HOSTS` config, never hardcoded (rule R3).
 - **Harmless payloads only:** canaries, arithmetic echoes and a read-only `/etc/passwd` probe,
   taken solely from the payload catalogue (spec Appendix B). No destructive, persistent or
   exfiltrating payloads; no DELETE, and no PUT/PATCH unless `--allow-mutating` is passed.
@@ -72,6 +74,23 @@ The organisers' source code and answer key are used only for this hackathon and 
 committed. `.gitignore` excludes `target_src/`, `keys/`, `*.key.json` and
 `docs/target_notes.local.md`. Put the organisers' app in `target_src/` and their (converted)
 answer key in `keys/answer_key.json` locally; see [`docs/SETUP.md`](docs/SETUP.md).
+
+## Benchmarking against a third-party app
+
+To measure generalisation on a real, independently written app, we scan **OWASP PyGoat** (Django,
+MIT) locally. Its source is **not vendored** — it is cloned at a pinned commit into a git-ignored
+`bench/pygoat/src/` and run via Docker Compose:
+
+```bash
+make bench-fetch     # clone PyGoat @ v2.0.1 (git-ignored) and start it via Docker Compose
+make bench           # full pipeline + eval -> docs/metrics/bench_pygoat.json (not part of make check)
+make bench-down      # stop it
+```
+
+Our hand-written, source-verified answer key is `bench/pygoat/answer_key.json`; details and caveats
+(PyGoat labs require an authenticated session) are in [`bench/pygoat/README.md`](bench/pygoat/README.md).
+Choice and pinned commit: [`docs/DECISIONS.md`](docs/DECISIONS.md) D-15; credit:
+[`THIRD_PARTY.md`](THIRD_PARTY.md).
 
 ## How correlation works
 
