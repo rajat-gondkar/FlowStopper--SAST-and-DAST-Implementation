@@ -1,10 +1,11 @@
-"""End-to-end pipeline and `FlowStopper scan` (Owner: A, P3-A1).
+"""End-to-end pipeline and `FlowStopper scan` (Owner: A, P3-A1, P5-A2).
 
 SAST -> DAST (seeded with routes) -> correlate -> store -> write issues.json + scan_meta.json
 (per-stage timings, seed, tool versions) into --out.
 
 `run_pipeline` is the reusable entry point (the P5-A1 API's `POST /scans` calls it too); the Typer
-`scan_command` is a thin wrapper that maps options onto the engine configs and errors onto exit codes.
+`scan_command` is a thin wrapper that maps options onto the engine configs and errors onto exit codes,
+writes the HTML / SARIF / Markdown reports next to issues.json and applies the `--fail-on` CI gate.
 `issues.json` holds no timings, timestamps or scan ids, so two scans of the same input serialise
 byte-for-byte (FR-6); everything run-specific goes to `scan_meta.json` and the SQLite store.
 """
@@ -32,6 +33,10 @@ from FlowStopper.dast.commands import build_auth
 from FlowStopper.dast.config import DastConfig
 from FlowStopper.dast.runner import run_dast
 from FlowStopper.models import DastResult, Issue, Label, SastResult
+from FlowStopper.report.gate import GATE_EXIT_CODE, gate_tripped, parse_fail_on
+from FlowStopper.report.html import render_html
+from FlowStopper.report.markdown import render_markdown
+from FlowStopper.report.sarif import to_sarif
 from FlowStopper.sast.config import SastConfig
 from FlowStopper.sast.runner import run_sast
 from FlowStopper.scope import ScopeError
@@ -41,6 +46,9 @@ logger = logging.getLogger("FlowStopper.pipeline")
 
 ISSUES_FILE = "issues.json"
 META_FILE = "scan_meta.json"
+REPORT_HTML_FILE = "report.html"
+SARIF_FILE = "issues.sarif"
+MARKDOWN_FILE = "findings.md"
 # Third-party packages whose versions are recorded in scan_meta.json (tool versions, spec P3-A1).
 VERSIONED_PACKAGES = ("httpx", "pydantic", "typer", "beautifulsoup4", "jinja2")
 
@@ -109,7 +117,22 @@ def _write_json(path: Path, data: object) -> None:
     path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
 
-def _unique_scan_id(db: Storage, source: str, target: str, started_at: str) -> str:
+def write_reports(issues: list[Issue], meta: dict, out_dir: Path | str) -> dict[str, Path]:
+    """Write report.html, issues.sarif and findings.md into `out_dir` (Dev B's renderers, P5-B1/B2)."""
+    out_path = Path(out_dir)
+    out_path.mkdir(parents=True, exist_ok=True)
+    paths = {
+        "html": out_path / REPORT_HTML_FILE,
+        "sarif": out_path / SARIF_FILE,
+        "markdown": out_path / MARKDOWN_FILE,
+    }
+    paths["html"].write_text(render_html(issues, meta), encoding="utf-8")
+    _write_json(paths["sarif"], to_sarif(issues, meta))
+    paths["markdown"].write_text(render_markdown(issues, meta), encoding="utf-8")
+    return paths
+
+
+def unique_scan_id(db: Storage, source: str, target: str, started_at: str) -> str:
     """Storage's scan id, made unique when another scan of the same input started in the same second.
 
     `make_scan_id` hashes a seconds-precision timestamp, so two scans of one app within a second would
@@ -134,12 +157,17 @@ def run_pipeline(
     db_path: Path | str = DEFAULT_DB_PATH,
     autoverify: bool = True,
     autoverify_budget_s: float = 60.0,
+    scan_id: Optional[str] = None,
 ) -> PipelineResult:
     """Scan `source` (parsed, never executed) and the running `target`, store and write the results.
 
     After correlation, eligible Code-only issues are auto-verified against `target` with one targeted
     check each (spec P4-B4, B-1), within `autoverify_budget_s` seconds; `autoverify=False` skips it.
     Authentication for DAST and auto-verify comes from `dast_config.auth`.
+
+    `scan_id` lets a caller that reserved the id beforehand (the API's `POST /scans`, which must
+    return it in its 202) reuse it; the store upserts that row. Without it a fresh id is generated
+    with `unique_scan_id` (DECISIONS_Dev1 A-61).
 
     Raises `PipelineError` when the source is not a directory, the scope guard refuses the target
     (rule R3, raised by `run_dast` before any connection) or any stage fails; the scan row in the
@@ -178,7 +206,7 @@ def run_pipeline(
                 target_url=target,
                 config=config_snapshot,
                 seed=seed,
-                scan_id=_unique_scan_id(db, str(source_path), target, started_at),
+                scan_id=scan_id or unique_scan_id(db, str(source_path), target, started_at),
                 started_at=started_at,
             )
         except Exception as exc:  # sqlite3 errors recording the scan row
@@ -282,11 +310,25 @@ def run_pipeline(
 
 
 def scan_command(
-    source: Annotated[Path, typer.Option("--source", help="source root of the target app")],
-    target: Annotated[str, typer.Option("--target", help="base URL of the running target")],
-    out: Annotated[Path, typer.Option("--out", help="output directory")] = Path("out"),
+    source: Annotated[Path, typer.Option("--source", help="source root of the target app (parsed, never executed)")],
+    target: Annotated[
+        str, typer.Option("--target", help="base URL of the running target (must be allow-listed, rule R3)")
+    ],
+    out: Annotated[
+        Path,
+        typer.Option(
+            "--out",
+            help="output directory for issues.json, scan_meta.json, report.html, issues.sarif and findings.md",
+        ),
+    ] = Path("out"),
     fail_on: Annotated[
-        Optional[str], typer.Option("--fail-on", help="CI gate, e.g. confirmed:high (exit code 2)")
+        Optional[str],
+        typer.Option(
+            "--fail-on",
+            help="CI gate '<label>:<severity>': label confirmed, code_only, runtime_only or any; severity "
+            "critical, high, medium, low or info. Exit 2 when a reported issue with that label is at or "
+            "above the severity (e.g. confirmed:high). Reports are still written.",
+        ),
     ] = None,
     time_budget: Annotated[int, typer.Option("--time-budget", help="DAST budget, seconds")] = 240,
     allow_host: Annotated[
@@ -312,11 +354,21 @@ def scan_command(
         bool, typer.Option("--autoverify/--no-autoverify", help="probe Code-only issues once more (B-1)")
     ] = True,
     autoverify_budget: Annotated[int, typer.Option("--autoverify-budget", help="seconds for auto-verify probes")] = 60,
+    db: Annotated[
+        Path, typer.Option("--db", envvar="FLOWSTOPPER_DB", help="SQLite store shared with `serve` and `eval --scan`")
+    ] = DEFAULT_DB_PATH,
 ) -> None:
-    """Run the full pipeline and write a prioritised issue list."""
-    if fail_on:
-        # The CI gate (exit code 2) is B's helper in P5-B2, wired here in P5-A2 (DECISIONS_Dev1 A-31).
-        logger.warning("--fail-on %s is not implemented until P5 (P5-A2/P5-B2); ignoring it", fail_on)
+    """Run the full pipeline (SAST -> DAST -> correlate -> auto-verify -> store) and write the reports.
+
+    Exit codes: 0 ok, 1 error (bad input, out-of-scope target, stage failure), 2 the --fail-on CI
+    gate tripped (all outputs are still written).
+    """
+    if fail_on is not None:
+        # Validate the gate before anything runs, so a typo is a usage error, not a silently open gate.
+        try:
+            parse_fail_on(fail_on)
+        except ValueError as exc:
+            raise typer.BadParameter(str(exc), param_hint="'--fail-on'") from exc
     try:
         auth = build_auth(auth_config, header, cookie)
     except (OSError, ValueError) as exc:
@@ -336,11 +388,17 @@ def scan_command(
             target,
             out,
             dast_config=dast_config,
+            db_path=db,
             autoverify=autoverify,
             autoverify_budget_s=autoverify_budget,
         )
     except PipelineError as exc:
         typer.echo(f"FlowStopper scan: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    try:
+        reports = write_reports(result.issues, result.meta, out)
+    except Exception as exc:  # renderer or file-system error: the scan itself is stored and written
+        typer.echo(f"FlowStopper scan: cannot write reports: {type(exc).__name__}: {exc}", err=True)
         raise typer.Exit(code=1) from exc
 
     meta = result.meta
@@ -365,4 +423,10 @@ def scan_command(
         f"scan: {counts['reported']} issue(s) (confirmed {counts['confirmed']}, code-only {counts['code_only']}, "
         f"runtime-only {counts['runtime_only']}; {counts['suppressed']} suppressed) in {timings['total']}s"
     )
-    typer.echo(f"scan: id {result.scan_id}; wrote {result.issues_path} and {result.meta_path}")
+    typer.echo(
+        f"scan: id {result.scan_id}; wrote {result.issues_path}, {result.meta_path}, {reports['html']}, "
+        f"{reports['sarif']} and {reports['markdown']}"
+    )
+    if fail_on is not None and gate_tripped(result.issues, fail_on):
+        typer.echo(f"scan: CI gate --fail-on {fail_on} tripped (exit {GATE_EXIT_CODE})", err=True)
+        raise typer.Exit(code=GATE_EXIT_CODE)

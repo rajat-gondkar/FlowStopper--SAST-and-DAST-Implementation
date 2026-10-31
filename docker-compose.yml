@@ -1,10 +1,23 @@
-# FlowStopper compose (Phase 0 skeleton; extended in P5-A3).
+# FlowStopper compose (P5-A3).
 #
-# Scan the organisers' app:
-#   TARGET_SRC=./target_src TARGET_NETWORK=<their_net> ALLOWED_HOSTS="localhost,127.0.0.1,<service>" \
-#   docker compose run --rm flowstopper scan --source /src --target http://<service>:<port> --out /app/out
+# API only (published on 127.0.0.1:8000; the container binds 0.0.0.0 inside its own network):
+#   docker compose up --build
+#   curl http://127.0.0.1:8000/health
+#
+# Scan an app running in another compose project (e.g. the organisers' app). Join its network with
+# the override file docker-compose.target.yml (DECISIONS_Dev1 A-58) and allow its service name (R3):
+#   export TARGET_SRC=./target_src TARGET_NETWORK=<their_network> ALLOWED_HOSTS=localhost,127.0.0.1,::1,<service>
+#   docker compose -f docker-compose.yml -f docker-compose.target.yml up --build      # API, then POST /scans
+#   docker compose -f docker-compose.yml -f docker-compose.target.yml run --rm --user "$(id -u):$(id -g)" \
+#     -e FLOWSTOPPER_DB=/app/out/<dir>/.flowstopper/scans.db \
+#     flowstopper scan --source /src --target http://<service>:<port> --out /app/out/<dir>
+# (`docker network ls` shows the network name; compose calls it <project>_default unless it is named.)
+# `--user` lets the one-off scan write into the ./out bind mount on Linux. With a host uid the
+# flowstopper-data volume (owned by the image user) is not writable, so FLOWSTOPPER_DB moves the
+# one-off scan's store into ./out too. The API's store and its scan outputs live in flowstopper-data.
 #
 # target_src/ is mounted READ-ONLY (SAST parses, never writes — R7) and is git-ignored (R5).
+# `make demo` does all of the above against Mock A (apps/mock_a), with no dependency on the organisers' app.
 
 services:
   flowstopper:
@@ -15,17 +28,11 @@ services:
     volumes:
       - ${TARGET_SRC:-./target_src}:/src:ro
       - ./out:/app/out
-    # Join the target app's compose network so DAST can reach it by service name.
-    # networks: [default, target]
+      - flowstopper-data:/app/data
     # The API (FlowStopper serve) is the long-running entry; `run --rm flowstopper <cmd>` for one-offs.
     command: ["serve", "--host", "0.0.0.0", "--port", "8000"]
     ports:
       - "127.0.0.1:8000:8000"
 
-# Mock A (our own fixture) has its own compose file: apps/mock_a/docker-compose.yml (Phase 1).
-# `make demo` will start Mock A and scan it end-to-end with no dependency on the organisers' app.
-
-# networks:
-#   target:
-#     name: ${TARGET_NETWORK:-}
-#     external: true
+volumes:
+  flowstopper-data: {}
