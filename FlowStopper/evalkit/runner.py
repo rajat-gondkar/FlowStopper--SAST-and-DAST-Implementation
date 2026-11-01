@@ -5,9 +5,9 @@ Two ways to name the issues being scored (P3-B1):
 - `--scan <id>` reads that scan's snapshot from the SQLite store the pipeline writes (`latest` picks
   the most recent completed scan). Run time comes from the stored stage timings.
 - `--issues issues.json` reads a file. If the pipeline's `scan_meta.json` sits next to it, the run
-  time, truncation flag and scan id are read from there too.
+  time and scan id are read from there too.
 
-The written report keeps provenance (which key, which scan, when, whether DAST was truncated) so a
+The written report keeps provenance (which key, which scan, when) so a
 metrics file in docs/metrics/ can be trusted on its own later. It holds only counts and rates - never
 file paths, routes or findings from the scanned app - so a report for the organisers' app is safe to
 commit (rule R5); the answer-key path recorded is the one the caller passed.
@@ -46,7 +46,6 @@ class IssueSource:
     issues_path: Optional[str] = None
     db_path: Optional[str] = None
     run_time_s: Optional[float] = None
-    truncated: Optional[bool] = None  # None = unknown (the store does not record it)
 
 
 # --------------------------------------------------------------------------- loading
@@ -78,14 +77,12 @@ def issues_from_file(path: str | Path) -> IssueSource:
     meta = _read_sibling_meta(p)
     timings = meta.get("timings_s") if isinstance(meta.get("timings_s"), dict) else {}
     total = timings.get("total")
-    truncated = meta.get("truncated")
     return IssueSource(
         issues=issues,
         kind="issues",
         scan_id=meta.get("scan_id"),
         issues_path=str(p),
         run_time_s=float(total) if isinstance(total, (int, float)) else None,
-        truncated=truncated if isinstance(truncated, bool) else None,
     )
 
 
@@ -116,7 +113,6 @@ def issues_from_scan(scan_id: str, db_path: str | Path = DEFAULT_DB_PATH) -> Iss
         scan_id=scan["id"],
         db_path=str(db_file),
         run_time_s=float(total) if isinstance(total, (int, float)) else None,
-        truncated=None,
     )
 
 
@@ -183,7 +179,6 @@ def build_report(key: AnswerKey, key_path: str | Path, source: IssueSource) -> d
             "db": display_path(source.db_path),
         },
         "run_time_s": source.run_time_s,
-        "truncated": source.truncated,
         "issues": {"total": len(source.issues), "reported": len(source.issues) - suppressed, "suppressed": suppressed},
         "unplanted": len(unplanted_issues(source.issues, key)),
         "metrics": metrics,

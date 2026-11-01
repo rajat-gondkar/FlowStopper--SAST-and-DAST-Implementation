@@ -6,12 +6,9 @@ Flow: scope-check the target -> discover endpoints (seeded by the SAST route map
 run the host-wide passive checks once -> for every (endpoint, injectable param) run the active
 checks, verify each hit with a second canary + control, and collapse payload duplicates.
 
-Budgets and safety:
-- **Time budget** (`time_budget_s`): governs the active check phase - it is checked before each
-  (endpoint, param) unit and before each individual check, so an overrun stops cleanly mid-scan and
-  sets `stats["truncated"] = True` instead of being killed. Discovery and the one-off passive pass
-  run first and are not interruptible; a budget of 0 therefore yields passive findings only, marked
-  truncated.
+Safety and ordering:
+- **No time limit**: every (endpoint, param) unit runs to completion. Each request is still bounded
+  by the client's connect and total timeouts, so a hung endpoint cannot stall the scan.
 - **Concurrency**: units run under a semaphore; the client caps in-flight requests independently.
 - **Method policy**: GET/POST/HEAD/OPTIONS by default, PUT/PATCH only with `allow_mutating`,
   **DELETE never** (not reachable by configuration).
@@ -79,7 +76,6 @@ PRIORITY_PARAMS = (
 class _State:
     """Mutable counters for stats; a scan touches this from one event loop only."""
 
-    truncated: bool = False
     params_tested: int = 0
     checks_run: int = 0
     candidates: int = 0
@@ -116,16 +112,12 @@ async def _scan_param(
     ctx: CheckContext,
     endpoint: Endpoint,
     param: Param,
-    deadline: float,
     state: _State,
 ) -> list[Finding]:
     """Run every active check for one (endpoint, param), verify hits, collapse duplicates."""
     unit = ctx.derive(f"{endpoint.method} {endpoint.path}|{param.location.value}:{param.name}")
     hits: list[Finding] = []
     for check in ACTIVE_CHECKS:
-        if time.monotonic() >= deadline:
-            state.truncated = True
-            break
         state.checks_run += 1
         try:
             found = await check.run(unit, endpoint, param)
@@ -159,9 +151,6 @@ async def run_dast(target_url: str, routes: list[Route], config: Optional[DastCo
     allowed = allowed_methods(config)
     state = _State()
     started = time.monotonic()
-    # Taken literally: a budget of 0 means there is no time left, so the active phase is skipped
-    # and the result is marked truncated rather than silently given a grace period.
-    deadline = started + config.time_budget_s
 
     async with DastClient(guard, config) as client:
         ctx = CheckContext.create(client, base, config)
@@ -179,8 +168,8 @@ async def run_dast(target_url: str, routes: list[Route], config: Optional[DastCo
         endpoints = order_endpoints([e for e in discovered if e.method.upper() in allowed])
 
         passive_findings = await passive.run(ctx, endpoints)
-        # Host-wide, not budgeted (like the passive pass): one unknown-path request carrying the XSS
-        # canary, two on a hit (item 8, B-16).
+        # Host-wide (like the passive pass): one unknown-path request carrying the XSS canary, two on
+        # a hit (item 8, B-16).
         unknown_path_findings = await xss.probe_unknown_path(ctx.derive("xss-unknown-path"), base)
         passive_findings += unknown_path_findings
 
@@ -188,14 +177,8 @@ async def run_dast(target_url: str, routes: list[Route], config: Optional[DastCo
         sem = asyncio.Semaphore(max(1, config.concurrency))
 
         async def worker(endpoint: Endpoint, param: Param) -> list[Finding]:
-            if time.monotonic() >= deadline:
-                state.truncated = True
-                return []
             async with sem:
-                if time.monotonic() >= deadline:
-                    state.truncated = True
-                    return []
-                return await _scan_param(ctx, endpoint, param, deadline, state)
+                return await _scan_param(ctx, endpoint, param, state)
 
         gathered = await asyncio.gather(*(worker(e, p) for e, p in units), return_exceptions=True)
 
@@ -233,9 +216,7 @@ async def run_dast(target_url: str, routes: list[Route], config: Optional[DastCo
         "dropped_unverified": state.dropped,
         "unverified_examples": sorted(state.unverified)[:10],
         "errors": state.errors,
-        "truncated": state.truncated,
         "elapsed_s": round(time.monotonic() - started, 2),
-        "time_budget_s": config.time_budget_s,
         "concurrency": config.concurrency,
         "methods": sorted(allowed),
         "allow_mutating": config.allow_mutating,

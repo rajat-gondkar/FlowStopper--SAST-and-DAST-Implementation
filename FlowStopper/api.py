@@ -47,13 +47,11 @@ class ScanOptions(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    time_budget: int = Field(240, ge=1, description="DAST budget, seconds")
     allow_host: list[str] = Field(default_factory=list, description="extra allowed hosts (logs a WARNING)")
     allow_mutating: bool = False
     keep_secrets: bool = False
     seed: int = 0
     autoverify: bool = True
-    autoverify_budget: int = Field(60, ge=0, description="seconds for auto-verify probes")
     auth: Optional[AuthConfig] = None
 
     def to_dast_config(self) -> DastConfig:
@@ -61,7 +59,6 @@ class ScanOptions(BaseModel):
         auth = self.auth if self.auth is not None and self.auth.is_configured else None
         return DastConfig(
             extra_allowed_hosts=list(self.allow_host),
-            time_budget_s=self.time_budget,
             allow_mutating=self.allow_mutating,
             keep_secrets=self.keep_secrets,
             seed=self.seed,
@@ -114,7 +111,6 @@ def _run_scan(
     target: str,
     config: DastConfig,
     autoverify: bool,
-    autoverify_budget: float,
 ) -> None:
     """Background task (sync, so it runs in a worker thread). Records failures; never raises."""
     db_path: Path = state.db_path
@@ -127,7 +123,6 @@ def _run_scan(
             dast_config=config,
             db_path=db_path,
             autoverify=autoverify,
-            autoverify_budget_s=autoverify_budget,
             scan_id=scan_id,
         )
         return
@@ -255,7 +250,6 @@ def create_app(db_path: Path | str = DEFAULT_DB_PATH, out_root: Path | str = DEF
             body.target_url,
             config,
             body.options.autoverify,
-            float(body.options.autoverify_budget),
         )
         response.headers["Location"] = f"/scans/{scan_id}"
         return {"scan_id": scan_id, "status": "running"}
@@ -265,7 +259,6 @@ def create_app(db_path: Path | str = DEFAULT_DB_PATH, out_root: Path | str = DEF
         with Storage(app.state.db_path) as db:
             row = _scan_row(db, scan_id)
             issues = db.get_issues(scan_id=scan_id, include_suppressed=True)
-        meta = _read_meta(app.state.out_root, row)
         return {
             "scan_id": row["id"],
             "status": row["status"],
@@ -275,7 +268,6 @@ def create_app(db_path: Path | str = DEFAULT_DB_PATH, out_root: Path | str = DEF
             "finished_at": row["finished_at"],
             "seed": row["seed"],
             "timings_s": row["timings"],
-            "truncated": None if meta is None else meta.get("truncated"),
             "counts": pipeline.label_counts(issues),
             "error": app.state.errors.get(scan_id),
         }

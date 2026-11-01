@@ -167,6 +167,20 @@ def _redirect(ctx: Context) -> Fix:
     )
 
 
+def _deserialization(ctx: Context) -> Fix:
+    return Fix(
+        f"{ctx.where} deserializes {_p(ctx)} with a format that can build arbitrary objects (pickle, marshal "
+        "or an unsafe YAML loader), so a crafted payload can run code on the server.",
+        "import json, yaml\n"
+        "# data formats that cannot execute code\n"
+        f"obj = json.loads({ctx.var})\n"
+        f"obj = yaml.safe_load({ctx.var})\n"
+        "# if pickle cannot be avoided, accept it only from a trusted, signed source (hmac.compare_digest)",
+        "Never unpickle or unsafe-load data that crossed a trust boundary; use JSON or a schema-validated "
+        "format instead.",
+    )
+
+
 def _secret(ctx: Context) -> Fix:
     name = ctx.secret_name
     where = ctx.file or ctx.where
@@ -312,6 +326,7 @@ def _strip_host_wide(title: str) -> str:
 _CODE_TEMPLATES: dict[str, Callable[[Context], Fix]] = {
     "sqli": _sqli,
     "cmdi": _cmdi,
+    "deserialization": _deserialization,
     "xss": _xss,
     "path_traversal": _traversal,
     "open_redirect": _redirect,

@@ -211,7 +211,6 @@ class EvalView:
     app: Optional[str]
     scan_id: Optional[str]
     evaluated: Optional[str]
-    truncated: Optional[bool]
     scan_mismatch: bool
 
 
@@ -221,7 +220,6 @@ def _eval_view(report: Optional[dict], meta: dict) -> EvalView:
     source = report.get("source") if present and isinstance(report.get("source"), dict) else {}
     scan_id = source.get("scan_id") if isinstance(source.get("scan_id"), str) else None
     app = report.get("app") if present and isinstance(report.get("app"), str) else None
-    truncated = report.get("truncated") if present and isinstance(report.get("truncated"), bool) else None
     meta_scan = meta.get("scan_id")
     return EvalView(
         present=present,
@@ -230,7 +228,6 @@ def _eval_view(report: Optional[dict], meta: dict) -> EvalView:
         app=app,
         scan_id=scan_id,
         evaluated=human_time(report.get("evaluated_at")) if present else None,
-        truncated=truncated,
         scan_mismatch=bool(present and scan_id and meta_scan and scan_id != meta_scan),
     )
 

@@ -31,7 +31,6 @@ EVAL = {
     "evaluated_at": "2026-10-31T16:59:58+00:00",
     "source": {"kind": "issues", "scan_id": "s1", "issues": "out/x/issues.json", "db": None},
     "run_time_s": 2.1,
-    "truncated": False,
     "issues": {"total": 22, "reported": 21, "suppressed": 1},
     "unplanted": 5,
     "metrics": {
@@ -186,11 +185,6 @@ def test_fix_first_lists_the_top_three(fixture_expected_issues):
     for n, issue in enumerate(reported[:3], 1):
         assert str(escape(issue.title)) in cards
         assert f'<a class="open" href="#issue-{n}">Open details' in cards
-
-
-def test_truncated_scan_shows_a_banner(fixture_expected_issues):
-    assert "time budget was reached" in render_html(fixture_expected_issues, {"truncated": True})
-    assert "time budget was reached" not in render_html(fixture_expected_issues, {"truncated": False})
 
 
 def test_table_is_prioritised_confirmed_first(fixture_expected_issues):

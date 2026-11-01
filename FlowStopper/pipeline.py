@@ -185,13 +185,12 @@ def run_pipeline(
     correlate_config: Optional[CorrelateConfig] = None,
     db_path: Path | str = DEFAULT_DB_PATH,
     autoverify: bool = True,
-    autoverify_budget_s: float = 60.0,
     scan_id: Optional[str] = None,
 ) -> PipelineResult:
     """Scan `source` (parsed, never executed) and the running `target`, store and write the results.
 
     After correlation, eligible Code-only issues are auto-verified against `target` with one targeted
-    check each (spec P4-B4, B-1), within `autoverify_budget_s` seconds; `autoverify=False` skips it.
+    check each (spec P4-B4, B-1); `autoverify=False` skips it. There is no time limit on any stage.
     Authentication for DAST and auto-verify comes from `dast_config.auth`.
 
     `scan_id` lets a caller that reserved the id beforehand (the API's `POST /scans`, which must
@@ -200,8 +199,7 @@ def run_pipeline(
 
     Raises `PipelineError` when the source is not a directory, the scope guard refuses the target
     (rule R3, raised by `run_dast` before any connection) or any stage fails; the scan row in the
-    store is then marked `failed`. A DAST time-budget overrun is not an error: the scan completes
-    and `scan_meta.json` records `truncated: true`.
+    store is then marked `failed`.
     """
     source_path = Path(source)
     out_path = Path(out_dir)
@@ -264,11 +262,8 @@ def run_pipeline(
             if autoverify:
                 stage = "autoverify"
                 t0 = time.perf_counter()
-                deadline = time.monotonic() + autoverify_budget_s
                 try:
-                    verified = asyncio.run(
-                        auto_verify(issues, sast.routes, target, dast_config, correlate_config, deadline=deadline)
-                    )
+                    verified = asyncio.run(auto_verify(issues, sast.routes, target, dast_config, correlate_config))
                 except ScopeError as exc:
                     raise PipelineError("autoverify", f"refusing an out-of-scope target (rule R3): {exc}") from exc
                 issues = verified.issues
@@ -300,7 +295,6 @@ def run_pipeline(
                 "source": str(source_path),
                 "target": target,
                 "seed": seed,
-                "truncated": bool(dast.stats.get("truncated", False)),
                 "timings_s": timings,
                 "versions": tool_versions(),
                 "counts": {
@@ -359,7 +353,6 @@ def scan_command(
             "above the severity (e.g. confirmed:high). Reports are still written.",
         ),
     ] = None,
-    time_budget: Annotated[int, typer.Option("--time-budget", help="DAST budget, seconds")] = 240,
     allow_host: Annotated[
         Optional[list[str]], typer.Option("--allow-host", help="extra allowed host (logs a WARNING)")
     ] = None,
@@ -382,7 +375,6 @@ def scan_command(
     autoverify: Annotated[
         bool, typer.Option("--autoverify/--no-autoverify", help="probe Code-only issues once more (B-1)")
     ] = True,
-    autoverify_budget: Annotated[int, typer.Option("--autoverify-budget", help="seconds for auto-verify probes")] = 60,
     db: Annotated[
         Path, typer.Option("--db", envvar="FLOWSTOPPER_DB", help="SQLite store shared with `serve` and `eval --scan`")
     ] = DEFAULT_DB_PATH,
@@ -437,7 +429,6 @@ def scan_command(
         raise typer.Exit(code=1) from exc
     dast_config = DastConfig(
         extra_allowed_hosts=list(allow_host or []),
-        time_budget_s=time_budget,
         allow_mutating=allow_mutating,
         keep_secrets=keep_secrets,
         seed=seed,
@@ -451,7 +442,6 @@ def scan_command(
             dast_config=dast_config,
             db_path=db,
             autoverify=autoverify,
-            autoverify_budget_s=autoverify_budget,
         )
     except PipelineError as exc:
         typer.echo(f"FlowStopper scan: {exc}", err=True)
@@ -484,12 +474,10 @@ def scan_command(
     if av.get("enabled") and "eligible" in av:
         typer.echo(
             f"scan: auto-verify upgraded {av.get('upgraded', 0)} of {av['eligible']} eligible code-only issue(s)"
-            + (" [TRUNCATED: auto-verify budget reached]" if av.get("truncated") else "")
         )
     typer.echo(
         f"scan: {meta['counts']['routes']} route(s), {meta['counts']['sast_findings']} SAST finding(s), "
         f"{meta['counts']['dast_findings']} DAST finding(s)"
-        + (" [DAST TRUNCATED: time budget reached]" if meta["truncated"] else "")
     )
     typer.echo(
         f"scan: {counts['reported']} issue(s) (confirmed {counts['confirmed']}, code-only {counts['code_only']}, "

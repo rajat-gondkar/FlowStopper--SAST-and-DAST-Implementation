@@ -192,12 +192,10 @@ async def test_stats_shape():
         "params_tested",
         "requests",
         "findings",
-        "truncated",
         "elapsed_s",
         "methods",
     ):
         assert key in s, f"missing stat {key}"
-    assert s["truncated"] is False
     assert s["endpoints_from_routes"] >= len(ROUTES)
     assert s["requests"] > 0
 
@@ -227,47 +225,15 @@ async def test_mutating_endpoints_skipped_by_default():
     assert all(f.runtime.method != "PUT" for f in result.findings if f.runtime)
 
 
-async def test_time_budget_truncates_cleanly():
-    """A spent budget stops the active phase, keeps what was already collected, and says so.
+async def test_there_is_no_time_limit_every_param_is_tested():
+    """The scan has no time budget: every injectable (endpoint, param) unit runs all active checks."""
+    from FlowStopper.dast.config import DastConfig
 
-    The budget covers active checks only: discovery and the single passive pass run first and are
-    unaffected, so their findings must survive a zero budget rather than being thrown away.
-    """
-    result = await _scan(time_budget_s=0)
-    assert result.stats["truncated"] is True
-    assert result.stats["params_tested"] == 0
-    # Assert the findings are actually there: `all(...)` over an empty list passes vacuously, so
-    # without this the test would also pass if truncation discarded everything.
-    assert result.findings, "passive findings collected before the budget expired must be preserved"
-    assert result.stats["passive_findings"] == len(result.findings)
-    assert all(f.rule_id.startswith("dast.passive.") for f in result.findings)
-
-
-async def test_expired_deadline_stops_a_unit_before_it_sends_anything():
-    """Graceful stop at the unit level: no checks run, no payloads sent, truncation recorded."""
-    import time
-
-    from FlowStopper.dast.checks.base import CheckContext
-    from FlowStopper.dast.client import DastClient
-    from FlowStopper.scope import ScopeGuard
-
-    cfg = _config()
-    client = DastClient(ScopeGuard(["localhost"]), cfg, transport=httpx.MockTransport(vulnerable_app))
-    ctx = CheckContext.create(client, BASE, cfg)
-    endpoint, param = _endpoint_with_param("/items", "category")
-    state = runner._State()
-
-    found = await runner._scan_param(ctx, endpoint, param, deadline=time.monotonic() - 1.0, state=state)
-    await client.aclose()
-
-    assert found == []
-    assert state.truncated is True
-    assert state.checks_run == 0 and ctx.sent_payloads == []
-
-
-async def test_generous_budget_is_not_truncated():
-    result = await _scan(time_budget_s=240)
-    assert result.stats["truncated"] is False and result.stats["params_tested"] > 0
+    assert "time_budget_s" not in DastConfig.model_fields
+    result = await _scan()
+    assert "truncated" not in result.stats and "time_budget_s" not in result.stats
+    assert result.stats["params_tested"] > 0
+    assert result.stats["checks_run"] == result.stats["params_tested"] * len(runner.ACTIVE_CHECKS)
 
 
 async def test_only_appendix_b_payload_shapes_leave_the_runner():

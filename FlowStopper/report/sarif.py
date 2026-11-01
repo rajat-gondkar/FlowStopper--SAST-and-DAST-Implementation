@@ -259,7 +259,7 @@ def to_sarif(issues: list[Issue], meta: Optional[dict] = None) -> dict:
     if meta.get("finished_at"):
         invocation["endTimeUtc"] = meta["finished_at"]
     run["invocations"] = [invocation]
-    props = {k: meta[k] for k in ("target", "source", "truncated", "seed") if k in meta}
+    props = {k: meta[k] for k in ("target", "source", "seed") if k in meta}
     if props:
         run["properties"] = props
     return {"$schema": SARIF_SCHEMA, "version": SARIF_VERSION, "runs": [run]}

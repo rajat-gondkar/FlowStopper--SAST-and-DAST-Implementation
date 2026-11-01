@@ -35,9 +35,6 @@
       {% if scanned %}<div><dt>Scanned</dt><dd><time datetime="{{ scanned_iso }}">{{ scanned }}</time></dd></div>{% endif %}
       {% if duration %}<div><dt>Duration</dt><dd>{{ duration }}</dd></div>{% endif %}
     </dl>
-    {% if meta.get("truncated") %}
-    <p class="note">The DAST time budget was reached, so some runtime checks did not run. Results may be incomplete.</p>
-    {% endif %}
 
     {% if total %}
     <div class="section split">

@@ -81,7 +81,7 @@ def test_post_scan_returns_202_and_completes_in_the_background(client, source, f
     assert scan["status"] == "completed" and scan["error"] is None
     assert "total" in scan["timings_s"] and "dast" in scan["timings_s"]
     assert scan["counts"]["total"] > 0 and scan["counts"]["confirmed"] == 1
-    assert scan["truncated"] is False
+    assert "truncated" not in scan
     assert scan["source"] == str(source) and scan["target"] == TARGET
     assert "config" not in scan
     ((target, _, _),) = fake_dast.calls
@@ -89,14 +89,20 @@ def test_post_scan_returns_202_and_completes_in_the_background(client, source, f
 
 
 def test_post_scan_maps_options_onto_the_dast_config(client, source, fake_dast, fake_autoverify):
-    res = _post(client, source, time_budget=7, allow_host=["svc"], allow_mutating=True, seed=5, autoverify_budget=3)
+    res = _post(client, source, allow_host=["svc"], allow_mutating=True, seed=5)
     assert res.status_code == 202, res.text
     ((_, _, config),) = fake_dast.calls
     assert config.extra_allowed_hosts == ["svc"]
-    assert (config.time_budget_s, config.allow_mutating, config.keep_secrets, config.seed) == (7, True, False, 5)
+    assert (config.allow_mutating, config.keep_secrets, config.seed) == (True, False, 5)
     assert config.auth is None
     assert len(fake_autoverify.calls) == 1
     assert client.get(f"/scans/{res.json()['scan_id']}").json()["seed"] == 5
+
+
+@pytest.mark.parametrize("option", ["time_budget", "autoverify_budget"])
+def test_post_scan_rejects_the_removed_time_budget_options(client, source, fake_dast, option):
+    assert _post(client, source, **{option: 7}).status_code == 422
+    assert fake_dast.calls == []
 
 
 def test_post_scan_without_autoverify(client, source, fake_dast, fake_autoverify):
@@ -292,7 +298,7 @@ def test_report_of_a_cli_scan_shows_its_scores(source, tmp_path, monkeypatch, fa
     client = TestClient(create_app(db_path, tmp_path / "elsewhere"))
     html = client.get(f"/scans/{scan_id}/report").text
     assert "scored-demo-app" in html and "Not evaluated" not in html
-    assert client.get(f"/scans/{scan_id}").json()["truncated"] is False  # meta found via the recorded folder too
+    assert client.get(f"/scans/{scan_id}").json()["status"] == "completed"
 
 
 def test_report_of_an_unscored_cli_scan_says_not_evaluated(source, tmp_path, fake_dast, db_path):

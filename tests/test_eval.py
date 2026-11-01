@@ -113,15 +113,15 @@ def test_issues_file_picks_up_sibling_scan_meta(tmp_path):
     out.mkdir()
     (out / "issues.json").write_text((FIXTURES / "expected_issues.json").read_text(encoding="utf-8"), encoding="utf-8")
     (out / "scan_meta.json").write_text(
-        json.dumps({"scan_id": "s-123", "truncated": True, "timings_s": {"total": 42.0}}), encoding="utf-8"
+        json.dumps({"scan_id": "s-123", "timings_s": {"total": 42.0}}), encoding="utf-8"
     )
     source = issues_from_file(out / "issues.json")
-    assert (source.scan_id, source.run_time_s, source.truncated) == ("s-123", 42.0, True)
+    assert (source.scan_id, source.run_time_s) == ("s-123", 42.0)
 
 
 def test_issues_file_without_meta_has_unknown_run_time():
     source = issues_from_file(FIXTURES / "expected_issues.json")
-    assert source.run_time_s is None and source.truncated is None and source.scan_id is None
+    assert source.run_time_s is None and source.scan_id is None
 
 
 def test_bad_issues_file_is_an_eval_error(tmp_path):
@@ -258,7 +258,6 @@ def test_eval_cli_scores_a_stored_scan(tmp_path, fixture_expected_issues):
     res = CliRunner().invoke(app, ["eval", "--key", str(KEY), "--scan", sid, "--db", str(db), "--out", str(out)])
     assert res.exit_code == 0, res.output
     assert f"scan {sid}" in res.output and "Correct links" in res.output and "Run time" in res.output
-    assert "truncation unknown" in res.output  # the store does not record it: say so, don't imply "no"
     assert json.loads(out.read_text(encoding="utf-8"))["metrics"] == _expected_metrics()
 
 
@@ -290,17 +289,6 @@ def test_eval_cli_reports_unknown_scan_and_bad_key(tmp_path, fixture_expected_is
     bad_key.write_text(json.dumps({"app": "x", "vulns": [{"id": "V1"}]}), encoding="utf-8")
     res = CliRunner().invoke(app, ["eval", "--key", str(bad_key), "--issues", str(FIXTURES / "expected_issues.json")])
     assert res.exit_code == 1 and "not a valid answer key" in res.output
-
-
-def test_eval_cli_warns_when_dast_was_truncated(tmp_path):
-    out = tmp_path / "out"
-    out.mkdir()
-    (out / "issues.json").write_text((FIXTURES / "expected_issues.json").read_text(encoding="utf-8"), encoding="utf-8")
-    (out / "scan_meta.json").write_text(json.dumps({"truncated": True, "timings_s": {"total": 3.0}}), encoding="utf-8")
-    res = CliRunner().invoke(
-        app, ["eval", "--key", str(KEY), "--issues", str(out / "issues.json"), "-o", str(tmp_path / "m.json")]
-    )
-    assert res.exit_code == 0 and "truncated" in res.output
 
 
 # --------------------------------------------------------------------------- end to end with Dev A's pipeline
@@ -361,7 +349,7 @@ def test_eval_scores_a_real_pipeline_scan(tmp_path, monkeypatch):
                 proof="error",
             ),
         )
-        return DastResult(findings=[finding], stats={"truncated": False, "requests": 1})
+        return DastResult(findings=[finding], stats={"requests": 1})
 
     monkeypatch.setattr(pipeline, "run_dast", fake_dast)
     source = make_tree(tmp_path / "src", SHOP)

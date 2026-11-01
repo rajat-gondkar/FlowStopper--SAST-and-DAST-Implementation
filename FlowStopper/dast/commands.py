@@ -66,9 +66,6 @@ def dast_command(
     url: Annotated[str, typer.Argument(help="Base URL of the running target (must be allow-listed)")],
     routes: Annotated[Optional[Path], typer.Option("--routes", help="routes.json from `sast`")] = None,
     out: Annotated[Path, typer.Option("--out", "-o", help="DastResult JSON")] = Path("dast.json"),
-    time_budget: Annotated[
-        int, typer.Option("--time-budget", help="seconds for the active checks (discovery + passive run first)")
-    ] = 240,
     allow_mutating: Annotated[bool, typer.Option("--allow-mutating", help="also send PUT/PATCH")] = False,
     allow_host: Annotated[
         Optional[list[str]], typer.Option("--allow-host", help="extra allowed host (logs a WARNING)")
@@ -103,7 +100,6 @@ def dast_command(
     config = DastConfig(
         extra_allowed_hosts=list(allow_host or []),
         concurrency=concurrency,
-        time_budget_s=time_budget,
         allow_mutating=allow_mutating,
         seed=seed,
         keep_secrets=keep_secrets,
@@ -127,7 +123,6 @@ def dast_command(
     typer.echo(
         f"dast: {stats['findings']} finding(s) from {stats['endpoints_scanned']} endpoint(s), "
         f"{stats['requests']} request(s) in {stats['elapsed_s']}s"
-        + (" [TRUNCATED: time budget reached]" if stats.get("truncated") else "")
     )
     if stats.get("dropped_unverified"):
         typer.echo(f"dast: dropped {stats['dropped_unverified']} unverified candidate(s)")

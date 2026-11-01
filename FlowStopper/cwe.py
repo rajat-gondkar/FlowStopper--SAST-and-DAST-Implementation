@@ -31,6 +31,7 @@ OWASP_2025 = {
     "A02": "A02:2025 - Security Misconfiguration",
     "A05": "A05:2025 - Injection",
     "A07": "A07:2025 - Authentication Failures",
+    "A08": "A08:2025 - Software or Data Integrity Failures",
     "A10": "A10:2025 - Mishandling of Exceptional Conditions",
 }
 OWASP_2025_URL = "https://top10.owasp.org/2025/"
@@ -49,6 +50,7 @@ FAMILIES: dict[str, frozenset[int]] = {
     "verbose_errors": frozenset({209, 489, 215}),
     "info_exposure": frozenset({200, 497, 538}),
     "directory_listing": frozenset({548}),
+    "deserialization": frozenset({502}),  # CC-02: code side only, no safe runtime proof exists
 }
 
 # CWE families that have both a code side and a runtime side (correlation candidates).
@@ -151,6 +153,7 @@ CATALOGUE: dict[int, CweEntry] = {
         _e(497, "System Information Exposure (version banner)", "info_exposure", "A01", V_INFO),
         _e(538, "Sensitive File Exposed", "info_exposure", "A01", V_INFO),
         _e(548, "Directory Listing", "directory_listing", "A01", V_INFO),
+        _e(502, "Deserialization of Untrusted Data", "deserialization", "A08", V_INJECTION),
     ]
 }
 

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import time
 from pathlib import Path
 from typing import Annotated, Optional
 
@@ -37,9 +36,6 @@ def correlate_command(
         Optional[Path],
         typer.Option("--auth-config", help="JSON file with static headers/cookies and/or a login step (auto-verify)"),
     ] = None,
-    autoverify_budget: Annotated[
-        int, typer.Option("--autoverify-budget", help="seconds for auto-verify probes (with --target)")
-    ] = 60,
     seed: Annotated[int, typer.Option("--seed", help="seed for auto-verify canaries (reproducible)")] = 0,
     allow_host: Annotated[
         Optional[list[str]], typer.Option("--allow-host", help="extra allowed host (logs a WARNING), as for `dast`")
@@ -67,9 +63,8 @@ def correlate_command(
         config = DastConfig(
             seed=seed, auth=auth, extra_allowed_hosts=list(allow_host or []), allow_mutating=allow_mutating
         )
-        deadline = time.monotonic() + autoverify_budget
         try:
-            result = asyncio.run(auto_verify(issues, sast_result.routes, target, config, deadline=deadline))
+            result = asyncio.run(auto_verify(issues, sast_result.routes, target, config))
         except ScopeError as exc:
             typer.echo(f"correlate: refusing to auto-verify against an out-of-scope target (rule R3): {exc}", err=True)
             raise typer.Exit(code=1) from exc
@@ -77,7 +72,6 @@ def correlate_command(
         stats = result.stats
         typer.echo(
             f"correlate: auto-verify upgraded {stats['upgraded']} of {stats['eligible']} eligible code-only issue(s)"
-            + (" [TRUNCATED: auto-verify budget reached]" if stats.get("truncated") else "")
         )
 
     out.parent.mkdir(parents=True, exist_ok=True)

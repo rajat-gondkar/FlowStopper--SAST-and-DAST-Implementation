@@ -3,6 +3,37 @@
 Dev A's own design decisions (ids `A-NN`, newest first). Joint/Phase-0 decisions are in the shared
 [`DECISIONS.md`](DECISIONS.md); Dev B's are in [`DECISIONS_Dev2.md`](DECISIONS_Dev2.md). Using an
 `A-` prefix keeps our ids from ever colliding with Dev B's `B-` ids.
+- **A-76 (two generic SAST rules from a first unseen-app run: CWE-502 and CWE-489)**: (1) Insecure
+  deserialization: `sinks.DESERIALIZE` matches `pickle`/`_pickle`/`cPickle`/`dill`/`cloudpickle`/
+  `jsonpickle`/`marshal`/`joblib`/`pandas.read_pickle`/`yaml.unsafe_load` by resolved dotted name only
+  (a bare `loads`/`load` leaf is `json.loads` far more often); `yaml.load`/`load_all` is a sink unless a
+  safe loader is passed (`SafeLoader`, `CSafeLoader`, `BaseLoader`), kept as a hidden
+  `safe:yaml-safe-loader` record. `request.get_data()` is now a request-body source. CWE-502 joins the
+  catalogue as an additive change (CC-02, Dev B ACK pending): family `deserialization`, OWASP A08, base
+  score 9.8, not correlatable, so it is always Code-only. `int()`/`uuid` casts clear it like the other
+  CWEs. (2) Debug mode left on: `sast/misconfig.py` reports a literal `debug=True` in a dev-server launch
+  under `if __name__ == "__main__":`, in `FastAPI(...)`/`Starlette(...)`/`Flask(...)` constructors, in
+  `app.debug`/`app.config["DEBUG"]`/`app.config.update(DEBUG=True)` on a module-level framework app, and a
+  module-level `DEBUG = True` in a module that also defines a settings marker (`INSTALLED_APPS`,
+  `ROOT_URLCONF`, `ALLOWED_HOSTS`, `MIDDLEWARE`, `SECRET_KEY`), recognised by content and never by file
+  name. It reuses CWE-489 (existing, medium) and skips test code. Not done on purpose: CSP wording
+  checks (the header text is app policy). Measured: Mock A and Mock B code detection, runtime detection,
+  links, wrong links and false alarms are unchanged; Mock A gains one true Code-only debug finding
+  (`app.run(debug=True)` in its entry point), so its informational "unplanted" count goes 3 → 4. Tests:
+  `tests/test_sast_deserialization.py`, `tests/test_sast_misconfig.py`.
+- **A-75 (no time budgets; showcase takes any folder)**: the organisers said no time budget is needed,
+  so `--time-budget` and `--autoverify-budget` are removed from `scan`, `dast`, `correlate` and the
+  API's `POST /scans` options, and `DastConfig.time_budget_s`, the `deadline` parameter of
+  `auto_verify` and every `truncated` flag and banner (scan_meta, DAST/auto-verify stats, `eval`,
+  report, SARIF, `GET /scans/{id}`) are gone. A scan runs to completion; each request is still
+  bounded by the client's 3 s connect and 10 s total timeouts. Old `scan_meta.json` files that carry
+  a `truncated` key are still read without error. This edits Dev B's files (`dast/`, `report/`,
+  `evalkit/`, `correlate/`) at the user's explicit request; Dev B should pull before editing them.
+  `scripts/showcase.sh` now takes a folder path (leading `~` expanded) besides `mock_a`/`mock_b`:
+  `--target URL` scans an app that is already running; otherwise it starts the folder's compose file
+  and uses the first published port that answers HTTP. `--key` and `--auth` are optional, so a scan
+  without an answer key works and skips scoring. A folder with neither a compose file nor `--target`
+  is refused with the exact command to use.
 - **A-74 (Phase 7 release docs; P7-B1 written on Dev B's behalf)**: README follows spec Appendix E.
   Its quick start is `make demo` (Docker and make only), followed by `make showcase`. Its results
   section gives the two Docker-measured mock apps from `docs/metrics/final_mock_{a,b}.json`. The unseen-app

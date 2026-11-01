@@ -82,8 +82,7 @@ def _runtime(cwe: int, rule_id: str, path: str, param: str, route_id: str | None
 class FakeDast:
     """Stands in for `run_dast`: records its inputs and returns a canned result."""
 
-    def __init__(self, *, truncated: bool = False, error: Exception | None = None) -> None:
-        self.truncated = truncated
+    def __init__(self, *, error: Exception | None = None) -> None:
         self.error = error
         self.calls: list[tuple[str, list[Route], DastConfig]] = []
 
@@ -96,7 +95,7 @@ class FakeDast:
             _runtime(89, "dast.sqli.error", "/items", "category", items.id),  # links to the SAST flow
             _runtime(79, "dast.xss.reflected", "/echo", "q", None),  # no code side: runtime-only
         ]
-        stats = {"requests": 42, "findings": len(findings), "truncated": self.truncated, "seed": config.seed}
+        stats = {"requests": 42, "findings": len(findings), "seed": config.seed}
         return DastResult(findings=findings, stats=stats)
 
 
@@ -117,14 +116,14 @@ class FakeAutoVerify:
 
     def __init__(self, *, error: Exception | None = None) -> None:
         self.error = error
-        self.calls: list[tuple[str, DastConfig, float | None]] = []
+        self.calls: list[tuple[str, DastConfig]] = []
 
-    async def __call__(self, issues, routes, target_url, dast_config, correlate_config=None, deadline=None):
-        self.calls.append((target_url, dast_config, deadline))
+    async def __call__(self, issues, routes, target_url, dast_config, correlate_config=None):
+        self.calls.append((target_url, dast_config))
         if self.error is not None:
             raise self.error
         eligible = sum(1 for i in issues if i.label is Label.CODE_ONLY)
-        return AutoVerifyResult(issues=list(issues), stats={"eligible": eligible, "upgraded": 0, "truncated": False})
+        return AutoVerifyResult(issues=list(issues), stats={"eligible": eligible, "upgraded": 0})
 
 
 @pytest.fixture(autouse=True)
@@ -155,7 +154,7 @@ def test_scan_writes_issues_and_meta(source, tmp_path, fake_dast):
     assert set(meta["timings_s"]) == {"sast", "dast", "correlate", "autoverify", "store", "write", "total"}
     assert all(isinstance(v, float) and v >= 0 for v in meta["timings_s"].values())
     assert meta["seed"] == 0
-    assert meta["truncated"] is False
+    assert "truncated" not in meta
     assert meta["versions"]["FlowStopper"] and meta["versions"]["python"] and meta["versions"]["httpx"]
     assert meta["counts"]["issues"]["total"] == len(issues)
     assert meta["counts"]["dast_findings"] == 2
@@ -185,14 +184,6 @@ def test_two_scans_give_identical_issues(source, tmp_path, fake_dast):
         assert scan["status"] == "completed" and scan["seed"] == 0 and "total" in scan["timings"]
 
 
-def test_truncated_dast_still_completes(source, tmp_path, monkeypatch):
-    monkeypatch.setattr(pipeline, "run_dast", FakeDast(truncated=True))
-    result = _scan(source, tmp_path / "out", tmp_path / "scans.db")
-    meta = json.loads(result.meta_path.read_text(encoding="utf-8"))
-    assert meta["status"] == "completed" and meta["truncated"] is True
-    assert (tmp_path / "out" / "issues.json").is_file()
-
-
 def test_failing_stage_raises_and_marks_the_scan_failed(source, tmp_path, monkeypatch):
     monkeypatch.setattr(pipeline, "run_dast", FakeDast(error=RuntimeError("boom")))
     db = tmp_path / "scans.db"
@@ -210,22 +201,29 @@ def test_failing_stage_raises_and_marks_the_scan_failed(source, tmp_path, monkey
 
 def test_cli_scan_maps_options_onto_dast_config(source, tmp_path, monkeypatch, fake_dast):
     monkeypatch.chdir(tmp_path)  # the default DB path (.flowstopper/scans.db) lands in tmp_path
-    args = ["scan", "--source", str(source), "--target", TARGET, "--out", "o", "--time-budget", "7"]
+    args = ["scan", "--source", str(source), "--target", TARGET, "--out", "o"]
     args += ["--allow-host", "svc", "--allow-mutating", "--keep-secrets", "--seed", "5"]
     res = CliRunner().invoke(app, args)
     assert res.exit_code == 0, res.output
     assert "confirmed 1" in res.output
     ((_, _, config),) = fake_dast.calls
     assert config.extra_allowed_hosts == ["svc"]
-    assert (config.time_budget_s, config.allow_mutating, config.keep_secrets, config.seed) == (7, True, True, 5)
+    assert (config.allow_mutating, config.keep_secrets, config.seed) == (True, True, 5)
     assert (tmp_path / "o" / "issues.json").is_file() and (tmp_path / ".flowstopper" / "scans.db").is_file()
     assert json.loads((tmp_path / "o" / "scan_meta.json").read_text(encoding="utf-8"))["seed"] == 5
 
 
+@pytest.mark.parametrize("flag", ["--time-budget", "--autoverify-budget"])
+def test_cli_scan_has_no_time_budget_options(source, tmp_path, monkeypatch, fake_dast, flag):
+    monkeypatch.chdir(tmp_path)
+    res = CliRunner().invoke(app, ["scan", "--source", str(source), "--target", TARGET, "--out", "o", flag, "7"])
+    assert res.exit_code != 0 and fake_dast.calls == []
+
+
 def test_scan_auto_verifies_after_correlation(source, tmp_path, fake_dast, fake_autoverify):
-    result = _scan(source, tmp_path / "out", tmp_path / "scans.db", autoverify_budget_s=9)
-    ((target, config, deadline),) = fake_autoverify.calls
-    assert target == TARGET and config is fake_dast.calls[0][2] and deadline is not None
+    result = _scan(source, tmp_path / "out", tmp_path / "scans.db")
+    ((target, config),) = fake_autoverify.calls
+    assert target == TARGET and config is fake_dast.calls[0][2]
     meta = json.loads(result.meta_path.read_text(encoding="utf-8"))
     assert meta["autoverify"]["enabled"] is True and meta["autoverify"]["upgraded"] == 0
     assert meta["autoverify"]["eligible"] == sum(1 for i in result.issues if i.label is Label.CODE_ONLY)
@@ -251,14 +249,14 @@ def test_cli_scan_passes_auth_config_to_dast_and_autoverify(source, tmp_path, mo
     login = {"url": f"{TARGET}/login", "method": "POST", "json_body": {"username": "u", "password": "pw-zq81"}}
     auth_file.write_text(json.dumps({"login": login, "headers": {"X-Env": "env-zq82"}}), encoding="utf-8")
     args = ["scan", "--source", str(source), "--target", TARGET, "--out", "o", "--auth-config", str(auth_file)]
-    args += ["--header", "X-Extra: hdr-zq83", "--cookie", "sid=ck-zq84", "--autoverify-budget", "5"]
+    args += ["--header", "X-Extra: hdr-zq83", "--cookie", "sid=ck-zq84"]
     res = CliRunner().invoke(app, args)
     assert res.exit_code == 0, res.output
     ((_, _, config),) = fake_dast.calls
     assert config.auth is not None and config.auth.login is not None
     assert config.auth.headers == {"X-Env": "env-zq82", "X-Extra": "hdr-zq83"}
     assert config.auth.cookies == {"sid": "ck-zq84"}
-    ((_, av_config, _),) = fake_autoverify.calls
+    ((_, av_config),) = fake_autoverify.calls
     assert av_config.auth == config.auth  # auto-verify authenticates the same way DAST did
     # R7: no credential value reaches scan_meta.json or the store; only the shape is recorded.
     meta_text = (tmp_path / "o" / "scan_meta.json").read_text(encoding="utf-8")

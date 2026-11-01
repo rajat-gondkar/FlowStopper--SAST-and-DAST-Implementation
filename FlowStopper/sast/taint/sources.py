@@ -55,7 +55,7 @@ CONTAINERS: dict[str, ParamLocation] = {
 }
 ITEM_GETTERS: frozenset[str] = frozenset({"get", "getlist", "getall", "pop"})
 CONTAINER_CALLS: frozenset[str] = frozenset({"to_dict", "copy", "dict", "lists"})
-JSON_CALLS: frozenset[str] = frozenset({"get_json", "json"})
+JSON_CALLS: frozenset[str] = frozenset({"get_json", "json", "get_data"})
 # The requested URL itself (DECISIONS A-44): request data with no parameter name. Redirecting to it is
 # the redirect-to-self idiom, so CWE-601 is cleared from the start.
 URL_ATTRIBUTES: frozenset[str] = frozenset({"url", "path", "full_path", "base_url"})

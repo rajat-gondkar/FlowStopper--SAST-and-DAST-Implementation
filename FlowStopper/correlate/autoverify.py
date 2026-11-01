@@ -16,8 +16,8 @@ Safety rules (DECISIONS_Dev2 B-18):
   (route gate, link_min, ambiguity rule) against *every* unsuppressed code finding, and its id must
   not already belong to another issue. Otherwise the issue stays Code-only - a missed link is cheaper
   than a wrong one.
-- **Budget**: runs last; the deadline is checked before every probe and an overrun stops cleanly
-  with `stats["truncated"] = True`.
+- **No time limit**: runs last, one probe per eligible issue; each request is bounded by the client's
+  timeouts.
 - **Deterministic**: issues are probed in id order, each with an RNG derived from (seed, issue id).
 """
 
@@ -182,13 +182,11 @@ async def auto_verify(
     target_url: str,
     dast_config: Optional[DastConfig] = None,
     correlate_config: Optional[CorrelateConfig] = None,
-    deadline: Optional[float] = None,
     transport: Optional[httpx.AsyncBaseTransport] = None,
 ) -> AutoVerifyResult:
     """Probe eligible Code-only issues against `target_url` and upgrade the ones that reproduce.
 
-    `deadline` is a `time.monotonic()` instant (None = no limit). Raises ScopeError, before any
-    request, when `target_url` is outside the allow-list (R3).
+    Raises ScopeError, before any request, when `target_url` is outside the allow-list (R3).
     """
     config = dast_config or DastConfig()
     cc = correlate_config or CorrelateConfig()
@@ -220,10 +218,8 @@ async def auto_verify(
         "not_reproduced": 0,
         "relink_failed": 0,
         "already_linked": 0,
-        "not_reached": 0,
         "errors": 0,
         "skipped": dict(sorted(skipped.items())),
-        "truncated": False,
         "requests": 0,
         "payloads_sent": 0,
         "auth": None,
@@ -237,10 +233,6 @@ async def auto_verify(
         return AutoVerifyResult(sort_issues(out), sorted(added, key=lambda f: f.id), stats)
 
     if not probes:
-        return finish({}, [])
-    if deadline is not None and time.monotonic() >= deadline:
-        stats["truncated"] = True
-        stats["not_reached"] = len(probes)
         return finish({}, [])
 
     pool = _pool(issues)
@@ -257,11 +249,7 @@ async def auto_verify(
                 "auto-verify login failed (%s); continuing unauthenticated", auth.detail or f"status {auth.status}"
             )
 
-        for n, probe in enumerate(probes):
-            if deadline is not None and time.monotonic() >= deadline:
-                stats["truncated"] = True
-                stats["not_reached"] = len(probes) - n
-                break
+        for probe in probes:
             stats["probed"] += 1
             try:
                 hits = await _run_check(ctx.derive(f"autoverify|{probe.issue.id}"), probe)

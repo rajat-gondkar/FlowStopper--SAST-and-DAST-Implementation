@@ -54,4 +54,16 @@ the freeze without an explicit joint decision recorded here.
   matching rules only (no app-specific logic); the bench key uses existing schema fields. Delivered
   as part of P0-B1.
 
+### CC-02 — CWE-502 (Deserialization of Untrusted Data), additive
+- Date / Author: 2026-11-01 / Dev A (Person 1), at the user's request
+- Files: `FlowStopper/cwe.py` (adds OWASP category `A08`, family `deserialization` = {502}, catalogue
+  entry 502 with the injection vector, base score 9.8). Dev B file `FlowStopper/report/fixes.py` gets a
+  matching fix template (without it the generic fallback text is used).
+- Change (additive?): yes. No existing CWE, family, vector or score changes; `CORRELATABLE_FAMILIES` is
+  untouched, so a deserialization issue is always Code-only (no safe runtime proof exists).
+- Why: the new SAST rule `py.deserialization.*` (pickle/marshal/yaml loads of request data) needs a
+  catalogue entry; `get_cwe(502)` raises KeyError otherwise.
+- Impact on fixtures/schemas: none (no model changed; fixtures contain no CWE-502).
+- ACK by Dev B: **pending** — Dev B, please review `cwe.py` and the `fixes.py` template and reply here.
+
 _(Contracts not yet frozen; once `contract-v1` is tagged, add further entries above.)_

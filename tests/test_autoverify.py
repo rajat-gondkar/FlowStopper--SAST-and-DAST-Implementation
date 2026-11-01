@@ -3,14 +3,14 @@
 A Code-only issue whose taint names an entry route and a source param is re-tested with the one
 matching DAST check against exactly that (route, param). Pinned here: the upgrade to Confirmed on a
 vulnerable app, no upgrade on a safe one, zero requests for ineligible issues, the scope guard (R3),
-the deadline, Appendix B payloads only (R4), determinism, and an unchanged CLI without --target.
+Appendix B payloads only (R4), determinism, and an unchanged CLI without --target.
 """
 
 from __future__ import annotations
 
+import inspect
 import json
 import re
-import time
 
 import httpx
 import pytest
@@ -213,12 +213,12 @@ async def test_confirmed_and_runtime_only_issues_are_untouched(fixture_sast, fix
             assert after == before
 
 
-# --------------------------------------------------------------------------- budget + scope
-async def test_expired_deadline_sends_nothing_and_marks_truncated():
-    result, rec = await _verify([_code_only(_code())], deadline=time.monotonic() - 1)
-    assert rec.requests == []
-    assert result.stats["truncated"] is True and result.stats["not_reached"] == 1
-    assert result.issues[0].label is Label.CODE_ONLY
+# --------------------------------------------------------------------------- no time limit + scope
+async def test_every_eligible_issue_is_probed_and_there_is_no_time_limit():
+    result, _ = await _verify([_code_only(_code())])
+    assert result.stats["probed"] == result.stats["eligible"] == 1
+    assert "truncated" not in result.stats and "not_reached" not in result.stats
+    assert "deadline" not in inspect.signature(auto_verify).parameters
 
 
 async def test_out_of_scope_target_raises_before_any_request():
@@ -294,9 +294,9 @@ def test_cli_correlate_target_passes_allow_host_and_mutating(tmp_path, monkeypat
 
     seen = {}
 
-    async def fake_auto_verify(issues, routes, target_url, config, deadline=None):
+    async def fake_auto_verify(issues, routes, target_url, config):
         seen["config"] = config
-        return AutoVerifyResult(issues=list(issues), stats={"eligible": 0, "upgraded": 0, "truncated": False})
+        return AutoVerifyResult(issues=list(issues), stats={"eligible": 0, "upgraded": 0})
 
     monkeypatch.setattr(correlate_commands, "auto_verify", fake_auto_verify)
     sast_path, dast_path, out_path = tmp_path / "sast.json", tmp_path / "dast.json", tmp_path / "issues.json"

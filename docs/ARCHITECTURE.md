@@ -58,14 +58,14 @@ running app ─► DAST ──────────────────�
 
 ## DAST
 
-**Order and time budget.** Inside the DAST stage the order is fixed:
+**Order.** Inside the DAST stage the order is fixed:
 1. scope-check the target;
 2. log in, if configured;
 3. discover endpoints, seeded from the route map first, then from a crawl;
 4. run the host-wide passive checks **once**;
 5. run the active checks for each (endpoint, injectable parameter): route-map endpoints first, and Appendix B's priority parameter names first.
 
-The `--time-budget` (default 240 s) governs **only the active phase**. Discovery and the passive pass run first and cannot be interrupted. When the budget runs out, the runner stops scheduling active checks and keeps everything already collected. It then sets `stats.truncated = true`, so total DAST time can exceed the budget by design (B-05).
+There is no time limit: every stage runs to completion. Each request is bounded by the client's connect (3 s) and total (10 s) timeouts, and the number of in-flight requests by the concurrency cap, so a hung endpoint cannot stall the scan. The organisers confirmed that no time budget is required.
 
 **Checks.** All payloads come from spec Appendix B only (R4):
 

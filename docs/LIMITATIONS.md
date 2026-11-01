@@ -33,10 +33,8 @@ This is an honest list, final for v1.0. Each item says what we found on our own 
 - **Login.**
   - One configured login (static headers/cookies, or a login request) is applied to the whole scan.
   - Behaviour that appears only after a *successful* login on the same request that is being tested is not reached. An example is a redirect or cookie set by the login route itself.
-- **Crawl bounds.** The crawl stays on the same origin, goes at most 3 levels deep, follows at most 300 URLs, and runs under a time budget. Deep or JavaScript-rendered apps may be under-covered. The route map seeds most endpoints anyway.
-- **The time budget bounds the active checks, not the whole scan.**
-  - `--time-budget` (default 240 s) applies only to the per-parameter active checks. Discovery and the one-off host-wide passive pass run before it, so **total DAST time can exceed the budget**.
-  - When it expires we keep every finding collected so far and set `stats.truncated = true`, so a truncated scan is visible, not silently partial.
+- **Crawl bounds.** The crawl stays on the same origin, goes at most 3 levels deep and follows at most 300 URLs. Deep or JavaScript-rendered apps may be under-covered. The route map seeds most endpoints anyway.
+- **No time limit on a scan.** Every injectable parameter gets every active check. Each request is bounded by a 3 s connect and 10 s total timeout, but the number of requests is not capped, so a large app takes proportionally longer (Mock A: about 720 requests, 1.3 s). The crawl limits above still apply.
 - **The `Secure` cookie flag is checked only over HTTPS**, so plain-HTTP targets never report it.
 
 ## Correlation

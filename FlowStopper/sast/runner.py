@@ -21,6 +21,7 @@ from FlowStopper.sast import suppress
 from FlowStopper.sast.callgraph import annotate_reachable, build_call_graph
 from FlowStopper.sast.config import SastConfig
 from FlowStopper.sast.index import ProjectIndex, build_index
+from FlowStopper.sast.misconfig import ConfigHit, scan_misconfig
 from FlowStopper.sast.routes import extract_routes
 from FlowStopper.sast.secrets import SecretHit, scan_secrets
 from FlowStopper.sast.taint import sinks
@@ -30,6 +31,7 @@ from FlowStopper.sast.textfiles import read_text
 
 TAINT_TOOL = "FlowStopper-taint"
 SECRETS_TOOL = "FlowStopper-secrets"
+CONFIG_TOOL = "FlowStopper-config"
 MAX_SNIPPET_LINES = 12  # models.CodeLocation: a snippet is at most 12 lines
 SNIPPET_CONTEXT = 1  # lines kept on each side of the offending lines
 # The rule id the P2-A5 template sink emits, for the stats counter (one source of truth: sinks.py).
@@ -46,9 +48,14 @@ def run_sast(source_root: Path | str, config: Optional[SastConfig] = None) -> Sa
     taint_stats = TaintStats()
     taint = analyse_taint(index, routes, graph, templates, config, stats=taint_stats)
     secrets = scan_secrets(index.root, index, config)
+    misconfig = scan_misconfig(index, config)
 
     snippets = _Snippets(index, config)
-    findings = [_taint_finding(f, snippets) for f in taint] + [_secret_finding(h, snippets) for h in secrets]
+    findings = (
+        [_taint_finding(f, snippets) for f in taint]
+        + [_secret_finding(h, snippets) for h in secrets]
+        + [_config_finding(h, snippets) for h in misconfig]
+    )
     findings.sort(key=_order)
 
     stats = index.stats()
@@ -56,6 +63,7 @@ def run_sast(source_root: Path | str, config: Optional[SastConfig] = None) -> Sa
     stats["findings"] = len(findings)
     stats["taint_findings"] = len(taint)
     stats["secret_findings"] = len(secrets)
+    stats["config_findings"] = len(misconfig)
     stats["template_findings"] = sum(1 for f in taint if f.rule_id == TEMPLATE_RULE_ID)
     stats["functions_analysed"] = taint_stats.functions_analysed
     stats["summary_iterations"] = taint_stats.summary_iterations
@@ -143,6 +151,26 @@ def _secret_finding(hit: SecretHit, snippets: _Snippets) -> Finding:
         confidence=hit.confidence,
         code=code,
         raw={"name": hit.name, "value_redacted": hit.redacted, "entropy": round(hit.entropy, 3)},
+    )
+
+
+def _config_finding(hit: ConfigHit, snippets: _Snippets) -> Finding:
+    """A debug-mode setting left on (CWE-489). Code-only: no taint, no route."""
+    code = CodeLocation(
+        file=hit.file,
+        line_start=hit.line,
+        line_end=hit.line,
+        function=hit.function,
+        snippet=snippets.of(hit.file, hit.line, hit.line),
+    )
+    return _code_finding(
+        tool=CONFIG_TOOL,
+        rule_id=hit.rule_id,
+        cwe=hit.cwe,
+        title=hit.title,
+        confidence=hit.confidence,
+        code=code,
+        raw={"setting": hit.name},
     )
 
 

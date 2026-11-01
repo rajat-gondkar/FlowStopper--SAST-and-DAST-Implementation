@@ -61,8 +61,6 @@ def _header(meta: dict, reported: list[Issue], suppressed: list[Issue]) -> list[
     total = (meta.get("timings_s") or {}).get("total")
     if isinstance(total, (int, float)):
         lines.append(f"- **Duration:** {total:.1f} s")
-    if meta.get("truncated"):
-        lines.append("- **Note:** the DAST time budget was reached; some runtime checks did not run.")
     lines.append(
         f"- **Reported:** {len(reported)} ({counts['confirmed']} confirmed, {counts['code_only']} code only, "
         f"{counts['runtime_only']} runtime only); **suppressed:** {len(suppressed)}"

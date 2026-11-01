@@ -40,7 +40,7 @@ make showcase APP=mock_b       # start a demo target, scan, score, start the API
 make showcase-stop             # stop the target and the API
 ```
 
-`make showcase APP=…` accepts `mock_a` and `mock_b`. It prints:
+`make showcase APP=…` accepts `mock_a`, `mock_b` or the path of any folder that holds an app's source (see section 2). It prints:
 - the report URL and its Evaluation tab;
 - the API links: issues, scan status and SARIF;
 - the scores, when an answer key exists.
@@ -48,7 +48,25 @@ make showcase-stop             # stop the target and the API
 ## 2. Scanning the organisers' app
 
 The organisers' source and answer key are confidential and **never committed** (rule R5).
-`target_src/` and `keys/` are git-ignored.
+`target_src/` and `keys/` are git-ignored. No answer key is needed to scan: it is only used to score.
+
+**Quickest way: point the showcase command at the folder.** The folder can be anywhere.
+
+```bash
+# the app is already running on a local port
+make showcase APP=~/Desktop/their_app TARGET=http://127.0.0.1:5000
+
+# the folder has a docker-compose file: it is started and its published port is found automatically
+make showcase APP=~/Desktop/their_app
+
+# only if you have a key, or the app needs a login
+make showcase APP=~/Desktop/their_app TARGET=http://127.0.0.1:5000 KEY=keys/answer_key.json AUTH=keys/login.json
+make showcase-stop             # stop what it started
+```
+
+This scans the folder's source (parsed, never run) and the running app, writes the report, and prints
+the report and API links. Without `KEY` there are no scores and the Evaluation tab says so. The same
+works for the demo apps: `make showcase APP=-MockA`. The manual commands follow.
 
 ```bash
 mkdir -p target_src keys
@@ -77,7 +95,6 @@ Useful options on `scan`:
 | Option | What it does |
 |---|---|
 | `--auth-config login.json` | Log in first (static headers/cookies, or a login request whose token is copied onto later requests). Keep the file git-ignored, e.g. in `keys/`. |
-| `--time-budget 240` | Seconds for the active DAST checks (default 240) |
 | `--fail-on confirmed:high` | CI gate: exit code 2 if a Confirmed issue is high or critical |
 | `--key keys/answer_key.json` | Score the scan against an answer key (our format: `docs/ANSWER_KEY_FORMAT.md`); the scores appear on the report's Evaluation tab |
 
@@ -121,7 +138,8 @@ running app ─► DAST: scope-guarded client → discovery (seeded by routes + 
   - A name-resolved call graph.
   - Taint analysis inside each function, with per-function summaries solved to a fixpoint across the call graph. A finding is reported at the sink, with the HTTP parameter that feeds it (`source_param`) and the routes it can be reached from (`entry_routes`).
   - Sanitisers and guard checks mark safe flows as *suppressed* instead of dropping them.
-  - A hard-coded-secrets detector, and a Jinja template scan (`|safe`, `autoescape false`).
+  - A hard-coded-secrets detector, a Jinja template scan (`|safe`, `autoescape false`), and a check for debug mode left on.
+  - Insecure deserialization (`pickle`, `marshal`, unsafe `yaml` loads of request data) is a taint sink too. It is always Code-only, because a safe runtime proof does not exist.
 - **DAST:**
   - Endpoints are seeded from the route map, plus a same-origin crawl.
   - Active checks for SQLi, XSS, command injection, path traversal and open redirect.

@@ -11,7 +11,7 @@
     {% if ev.present %}
     <div class="card ev-summary">
       <p class="big">{{ ev.summary }}</p>
-      <p>Measured on <strong>{{ ev.app or "an unnamed app" }}</strong>{% if ev.scan_id %} (scan <span class="mono">{{ ev.scan_id }}</span>){% endif %} against our own answer key{% if ev.evaluated %}, evaluated {{ ev.evaluated }}{% endif %}. Not the organisers' score.{% if ev.truncated %} The DAST time budget was reached in that scan.{% endif %}</p>
+      <p>Measured on <strong>{{ ev.app or "an unnamed app" }}</strong>{% if ev.scan_id %} (scan <span class="mono">{{ ev.scan_id }}</span>){% endif %} against our own answer key{% if ev.evaluated %}, evaluated {{ ev.evaluated }}{% endif %}. Not the organisers' score.</p>
     </div>
     {% if ev.scan_mismatch %}<p class="note">This evaluation is for a different scan than the one in this report.</p>{% endif %}
     <ol class="card ev-rows">

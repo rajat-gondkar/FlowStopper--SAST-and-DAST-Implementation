@@ -20,7 +20,7 @@ from typing import Optional
 from FlowStopper.sast.index import ModuleContext, dotted_parts
 from FlowStopper.sast.routes.resolver import const_str
 
-ALL_CWES: frozenset[int] = frozenset({22, 78, 79, 89, 601})
+ALL_CWES: frozenset[int] = frozenset({22, 78, 79, 89, 502, 601})
 SQLI: frozenset[int] = frozenset({89})
 CMDI: frozenset[int] = frozenset({78})
 XSS: frozenset[int] = frozenset({79})

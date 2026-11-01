@@ -791,6 +791,8 @@ class _FunctionWalk:
             argument = sinks.argument_node(node, spec)
             suppressed = True
             reason = sinks.SUPPRESS_LIST_NO_SHELL if sinks.is_sequence_argument(argument) else sinks.SUPPRESS_NO_SHELL
+        elif value.tainted_for(spec.cwe) and spec.safe_loader_check and sinks.has_safe_yaml_loader(node):
+            suppressed, reason = True, suppress.SAFE_YAML_SAFE_LOADER
         self._sink_report(spec, value, node.lineno, line_end, suppressed=suppressed, reason=reason)
 
     @staticmethod

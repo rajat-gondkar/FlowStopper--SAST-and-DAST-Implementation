@@ -32,6 +32,7 @@ SAFE_PREFIX = "safe:"
 SAFE_SQL_PARAMETERISED = "safe:sql-parameterised"
 SAFE_SUBPROCESS_LIST_NO_SHELL = "safe:subprocess-list-no-shell"
 SAFE_SUBPROCESS_NO_SHELL = "safe:subprocess-no-shell"
+SAFE_YAML_SAFE_LOADER = "safe:yaml-safe-loader"
 UNREACHABLE = "unreachable"
 SECRET_CWE = 798  # hard-coded secrets are never suppressed as unreachable
 

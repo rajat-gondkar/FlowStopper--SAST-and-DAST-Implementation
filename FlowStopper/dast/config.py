@@ -57,7 +57,6 @@ class DastConfig(BaseModel):
     max_rps: Optional[float] = None  # global request-rate cap
     connect_timeout_s: float = 3.0
     total_timeout_s: float = 10.0
-    time_budget_s: int = 240
     allow_mutating: bool = False  # PUT/PATCH only with --allow-mutating; DELETE never
     crawl_max_depth: int = 3
     crawl_max_urls: int = 300

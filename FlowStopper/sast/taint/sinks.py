@@ -41,6 +41,7 @@ class SinkSpec:
     arg_keywords: frozenset[str] = frozenset()  # keyword spellings of that argument
     requires_string_built: bool = False  # a constant string with tainted binds is safe
     requires_shell: bool = False  # needs shell=True (or a shell-only callee) to be unsafe
+    safe_loader_check: bool = False  # safe when a safe YAML `Loader` is passed (CWE-502)
     result_barrier: bool = True
 
 
@@ -149,6 +150,47 @@ LIST_DIR = SinkSpec(
     arg_keywords=frozenset({"path", "top"}),
 )
 
+# CWE-502. Matched by resolved dotted name only: a bare `loads`/`load` leaf is `json.loads` far more
+# often than a pickle, so leaf matching would be wrong here.
+DESERIALIZE = SinkSpec(
+    cwe=502,
+    rule_family="deserialization",
+    token="load",
+    dotted=frozenset(
+        {
+            "pickle.loads",
+            "pickle.load",
+            "_pickle.loads",
+            "_pickle.load",
+            "cPickle.loads",
+            "cPickle.load",
+            "dill.loads",
+            "dill.load",
+            "cloudpickle.loads",
+            "cloudpickle.load",
+            "jsonpickle.decode",
+            "marshal.loads",
+            "marshal.load",
+            "joblib.load",
+            "pandas.read_pickle",
+            "yaml.unsafe_load",
+            "yaml.unsafe_load_all",
+        }
+    ),
+    arg_keywords=frozenset({"data", "string", "bytes", "file", "filename", "filepath_or_buffer", "stream"}),
+)
+
+# `yaml.load(data)` / `yaml.load(data, Loader=yaml.SafeLoader)`: safe only with a safe loader.
+YAML_LOAD = SinkSpec(
+    cwe=502,
+    rule_family="deserialization",
+    token="yaml-load",
+    dotted=frozenset({"yaml.load", "yaml.load_all"}),
+    arg_keywords=frozenset({"stream"}),
+    safe_loader_check=True,
+)
+SAFE_YAML_LOADERS: frozenset[str] = frozenset({"SafeLoader", "CSafeLoader", "BaseLoader", "CBaseLoader"})
+
 REDIRECT = SinkSpec(
     cwe=601,
     rule_family="redirect",
@@ -224,6 +266,8 @@ SINKS: tuple[SinkSpec, ...] = (
     SEND_FILE,
     LIST_DIR,
     PATH_ACCESS,
+    DESERIALIZE,
+    YAML_LOAD,
     REDIRECT,
     HTML_RESPONSE,
     MARKUP,
@@ -298,6 +342,11 @@ _TITLES: dict[tuple[str, str], str] = {
     ("traversal", "path-access"): "Path traversal: request data reaches a file read/write with no containment check",
     ("traversal", "send-file"): "Path traversal: request data reaches a file response with no containment check",
     ("traversal", "listdir"): "Path traversal: request data reaches a directory listing with no containment check",
+    ("deserialization", "load"): "Insecure deserialization: request data is unpickled or unsafe-loaded",
+    (
+        "deserialization",
+        "yaml-load",
+    ): "Insecure deserialization: request data reaches yaml.load() with an unsafe loader",
     ("redirect", "unvalidated"): "Open redirect: request data reaches redirect() without validation",
     ("redirect", "location-header"): "Open redirect: request data written to a Location header without validation",
     ("xss", "html-response"): "XSS: request data returned in an HTML response without escaping",
@@ -312,6 +361,7 @@ _SPECIAL_TITLES: dict[tuple[str, str, str], str] = {
 SUPPRESS_LIST_NO_SHELL = suppress.SAFE_SUBPROCESS_LIST_NO_SHELL
 SUPPRESS_NO_SHELL = suppress.SAFE_SUBPROCESS_NO_SHELL
 _SUPPRESSED_TITLES: dict[str, str] = {
+    suppress.SAFE_YAML_SAFE_LOADER: "yaml.load() with request data and a safe loader",
     SUPPRESS_LIST_NO_SHELL: "Command execution with request data (list form, no shell)",
     SUPPRESS_NO_SHELL: "Command execution with request data (no shell)",
     suppress.SAFE_SQL_PARAMETERISED: "Parameterised SQL query with request data in bind parameters",
@@ -548,6 +598,17 @@ def shell_true(call: ast.Call) -> bool:
     """True when the call passes a truthy literal `shell=`."""
     value = keyword(call, "shell")
     return isinstance(value, ast.Constant) and bool(value.value)
+
+
+def has_safe_yaml_loader(call: ast.Call) -> bool:
+    """True when a `yaml.load` call passes a safe loader (`Loader=yaml.SafeLoader`, or as 2nd argument)."""
+    loader = keyword(call, "Loader")
+    if loader is None and len(call.args) >= 2:
+        loader = call.args[1]
+    if loader is None:
+        return False
+    parts = dotted_parts(loader)
+    return bool(parts) and parts[-1] in SAFE_YAML_LOADERS
 
 
 def is_sequence_argument(value: Optional[ast.expr]) -> bool:

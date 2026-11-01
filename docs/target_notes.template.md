@@ -30,5 +30,5 @@ into `FlowStopper/` — it informs *generic* rules only (rule R6).
 
 ## Scanning notes
 - `ALLOWED_HOSTS` value needed (compose service name?):
-- Time budget observations:
+- How long a full scan took:
 - Endpoints that are slow / unstable (need stricter evidence):

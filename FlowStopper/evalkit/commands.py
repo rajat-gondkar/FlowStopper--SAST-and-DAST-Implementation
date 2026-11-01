@@ -48,17 +48,6 @@ def eval_command(
     )
     typer.echo(format_metrics_table(report["metrics"], report["run_time_s"]))
     typer.echo(f"\nunplanted (informational): {report['unplanted']} reported issue(s) match no planted vuln or decoy")
-    if report["truncated"]:
-        typer.echo("WARNING: the DAST stage was truncated by its time budget; runtime metrics are a lower bound.")
-    elif report["truncated"] is None:
-        # The SQLite store does not record DAST truncation (only scan_meta.json does), so say so rather
-        # than let silence read as "not truncated".
-        hint = (
-            "eval --issues <out>/issues.json reads it from scan_meta.json"
-            if source["kind"] == "scan"
-            else ("no scan_meta.json next to the issues file")
-        )
-        typer.echo(f"note: DAST truncation unknown ({hint}).")
     if report["run_time_s"] is None:
         typer.echo("note: run time unknown (no scan_meta.json next to the issues file).")
     typer.echo(f"\nwrote {out_path}")
