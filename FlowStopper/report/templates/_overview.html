@@ -19,7 +19,7 @@
           <span class="fill" style="width: {{ '%.1f'|format(top.risk * 10) }}%"></span>
           <span class="tick" style="left: 40%"></span><span class="tick" style="left: 70%"></span><span class="tick" style="left: 90%"></span>
         </div>
-        <p class="meter-scale" aria-hidden="true"><span>0</span><span>4</span><span>7</span><span>9</span><span>10</span></p>
+        <p class="meter-scale" aria-hidden="true"><span style="left: 0%">0</span><span style="left: 40%">4</span><span style="left: 70%">7</span><span style="left: 90%">9</span><span style="left: 100%">10</span></p>
         {% set tv = reported|selectattr("issue.id", "equalto", top.id)|first %}
         <p class="which"><a href="#{{ tv.anchor }}">{{ top.title }}</a></p>
         {% else %}
