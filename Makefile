@@ -5,7 +5,7 @@ VENV   := .venv
 PY     := $(VENV)/bin/python
 
 .DEFAULT_GOAL := help
-.PHONY: help setup lint fmt test check schemas fixtures lock doctor validate-key demo demo-down bench-fetch bench bench-down clean
+.PHONY: help setup lint fmt test check schemas fixtures lock doctor validate-key demo demo-down showcase showcase-stop bench-fetch bench bench-down clean
 
 help: ## list targets
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z_-]+:.*## / {printf "  %-13s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -93,6 +93,12 @@ demo-down: ## stop the Mock A container started by make demo
 
 # Which bench/<app>/ the fetch/down targets use: make bench-fetch BENCH_APP=owasp-benchmark-python
 BENCH_APP ?= vulnerable-flask-app
+
+showcase: ## scan a demo target and print every link: make showcase APP=mock_a (mock_a|mock_b|we45|owasp)
+	@./scripts/showcase.sh $(or $(APP),mock_a)
+
+showcase-stop: ## stop the targets and the API that `make showcase` started
+	@./scripts/showcase.sh stop
 
 bench-fetch: ## clone the pinned third-party benchmark app (git-ignored) and run it via Docker Compose
 	./scripts/bench_fetch.sh all $(BENCH_APP)

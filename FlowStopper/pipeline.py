@@ -32,6 +32,9 @@ from FlowStopper.correlate.issues import is_suppressed
 from FlowStopper.dast.commands import build_auth
 from FlowStopper.dast.config import DastConfig
 from FlowStopper.dast.runner import run_dast
+from FlowStopper.evalkit.keyschema import load_key
+from FlowStopper.evalkit.metrics import format_metrics_table
+from FlowStopper.evalkit.runner import EvalError, run_eval
 from FlowStopper.models import DastResult, Issue, Label, SastResult
 from FlowStopper.report.gate import GATE_EXIT_CODE, gate_tripped, parse_fail_on
 from FlowStopper.report.html import render_html
@@ -49,6 +52,7 @@ META_FILE = "scan_meta.json"
 REPORT_HTML_FILE = "report.html"
 SARIF_FILE = "issues.sarif"
 MARKDOWN_FILE = "findings.md"
+EVALUATION_FILE = "evaluation.json"  # `scan --key`: the scores shown on the report's Evaluation tab
 # Third-party packages whose versions are recorded in scan_meta.json (tool versions, spec P3-A1).
 VERSIONED_PACKAGES = ("httpx", "pydantic", "typer", "beautifulsoup4", "jinja2")
 
@@ -117,8 +121,13 @@ def _write_json(path: Path, data: object) -> None:
     path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
 
-def write_reports(issues: list[Issue], meta: dict, out_dir: Path | str) -> dict[str, Path]:
-    """Write report.html, issues.sarif and findings.md into `out_dir` (Dev B's renderers, P5-B1/B2)."""
+def write_reports(
+    issues: list[Issue], meta: dict, out_dir: Path | str, eval_report: Optional[dict] = None
+) -> dict[str, Path]:
+    """Write report.html, issues.sarif and findings.md into `out_dir` (Dev B's renderers, P5-B1/B2).
+
+    `eval_report` (the JSON `FlowStopper eval` writes) fills the HTML report's Evaluation tab.
+    """
     out_path = Path(out_dir)
     out_path.mkdir(parents=True, exist_ok=True)
     paths = {
@@ -126,7 +135,7 @@ def write_reports(issues: list[Issue], meta: dict, out_dir: Path | str) -> dict[
         "sarif": out_path / SARIF_FILE,
         "markdown": out_path / MARKDOWN_FILE,
     }
-    paths["html"].write_text(render_html(issues, meta), encoding="utf-8")
+    paths["html"].write_text(render_html(issues, meta, eval_report=eval_report), encoding="utf-8")
     _write_json(paths["sarif"], to_sarif(issues, meta))
     paths["markdown"].write_text(render_markdown(issues, meta), encoding="utf-8")
     return paths
@@ -204,7 +213,7 @@ def run_pipeline(
             scan_id = db.start_scan(
                 source_path=str(source_path),
                 target_url=target,
-                config=config_snapshot,
+                config={**config_snapshot, "output": {"dir": str(out_path.resolve())}},
                 seed=seed,
                 scan_id=scan_id or unique_scan_id(db, str(source_path), target, started_at),
                 started_at=started_at,
@@ -357,6 +366,14 @@ def scan_command(
     db: Annotated[
         Path, typer.Option("--db", envvar="FLOWSTOPPER_DB", help="SQLite store shared with `serve` and `eval --scan`")
     ] = DEFAULT_DB_PATH,
+    key: Annotated[
+        Optional[Path],
+        typer.Option(
+            "--key",
+            help="answer key (docs/ANSWER_KEY_FORMAT.md): score the scan against it, print the table and show "
+            "the scores on the report's Evaluation tab. Only for targets whose planted bugs are known.",
+        ),
+    ] = None,
 ) -> None:
     """Run the full pipeline (SAST -> DAST -> correlate -> auto-verify -> store) and write the reports.
 
@@ -369,6 +386,12 @@ def scan_command(
             parse_fail_on(fail_on)
         except ValueError as exc:
             raise typer.BadParameter(str(exc), param_hint="'--fail-on'") from exc
+    if key is not None:  # a bad key should fail now, not after a scan
+        try:
+            load_key(key)
+        except (OSError, ValueError) as exc:
+            typer.echo(f"FlowStopper scan: {key} is not a usable answer key: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
     try:
         auth = build_auth(auth_config, header, cookie)
     except (OSError, ValueError) as exc:
@@ -395,8 +418,16 @@ def scan_command(
     except PipelineError as exc:
         typer.echo(f"FlowStopper scan: {exc}", err=True)
         raise typer.Exit(code=1) from exc
+    eval_report: Optional[dict] = None
+    eval_failed = False
+    if key is not None:
+        try:
+            eval_report, _ = run_eval(key, result.issues_path, Path(out) / EVALUATION_FILE)
+        except (EvalError, OSError, ValueError) as exc:
+            typer.echo(f"FlowStopper scan: could not score the scan against {key}: {exc}", err=True)
+            eval_failed = True
     try:
-        reports = write_reports(result.issues, result.meta, out)
+        reports = write_reports(result.issues, result.meta, out, eval_report)
     except Exception as exc:  # renderer or file-system error: the scan itself is stored and written
         typer.echo(f"FlowStopper scan: cannot write reports: {type(exc).__name__}: {exc}", err=True)
         raise typer.Exit(code=1) from exc
@@ -427,6 +458,15 @@ def scan_command(
         f"scan: id {result.scan_id}; wrote {result.issues_path}, {result.meta_path}, {reports['html']}, "
         f"{reports['sarif']} and {reports['markdown']}"
     )
+    if eval_report is not None:
+        typer.echo(f"\nscan: scored against {key} ({eval_report['app']})")
+        typer.echo(format_metrics_table(eval_report["metrics"], eval_report["run_time_s"]))
+        typer.echo(
+            f"unplanted (informational): {eval_report['unplanted']} reported issue(s) match no planted vuln or decoy"
+        )
+        typer.echo(f"scan: scores -> {Path(out) / EVALUATION_FILE} and the report's Evaluation tab")
+    if eval_failed:
+        raise typer.Exit(code=1)
     if fail_on is not None and gate_tripped(result.issues, fail_on):
         typer.echo(f"scan: CI gate --fail-on {fail_on} tripped (exit {GATE_EXIT_CODE})", err=True)
         raise typer.Exit(code=GATE_EXIT_CODE)

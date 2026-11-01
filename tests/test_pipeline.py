@@ -411,3 +411,64 @@ def test_live_scan_of_mock_a(tmp_path):
     assert result.meta["status"] == "completed"
     assert result.meta["counts"]["issues"]["confirmed"] >= 1
     assert (tmp_path / "out" / "issues.json").is_file()
+
+
+# --------------------------------------------------------------------------- scan --key (scores on the report)
+KEY = {
+    "schema_version": "1",
+    "app": "scored-demo-app",
+    "language": "python",
+    "vulns": [
+        {
+            "id": "V1",
+            "cwe": 89,
+            "kind": "pair",
+            "code": {"file": "shop/app.py", "line_start": 1, "line_end": 40},
+            "runtime": {"method": "GET", "path": "/items", "param": "category"},
+        }
+    ],
+    "decoys": [],
+}
+
+
+def _write_key(tmp_path, data=None) -> Path:
+    path = tmp_path / "key.json"
+    path.write_text(json.dumps(KEY if data is None else data), encoding="utf-8")
+    return path
+
+
+def test_cli_scan_key_scores_the_scan_and_fills_the_evaluation_tab(source, tmp_path, monkeypatch, fake_dast):
+    monkeypatch.chdir(tmp_path)
+    res = CliRunner().invoke(
+        app, ["scan", "--source", str(source), "--target", TARGET, "--out", "o", "--key", str(_write_key(tmp_path))]
+    )
+    assert res.exit_code == 0, res.output
+    assert "Code detection" in res.output and "Correct links" in res.output  # the table is printed
+    evaluation = json.loads((tmp_path / "o" / "evaluation.json").read_text(encoding="utf-8"))
+    assert evaluation["app"] == "scored-demo-app" and set(evaluation["metrics"]) >= {"code_detection", "correct_links"}
+    html = (tmp_path / "o" / "report.html").read_text(encoding="utf-8")
+    assert "scored-demo-app" in html and "Not evaluated" not in html
+
+
+def test_cli_scan_without_key_says_not_evaluated(source, tmp_path, monkeypatch, fake_dast):
+    monkeypatch.chdir(tmp_path)
+    res = CliRunner().invoke(app, ["scan", "--source", str(source), "--target", TARGET, "--out", "o"])
+    assert res.exit_code == 0, res.output
+    assert not (tmp_path / "o" / "evaluation.json").exists()
+    assert "Not evaluated" in (tmp_path / "o" / "report.html").read_text(encoding="utf-8")
+
+
+def test_cli_scan_rejects_a_bad_key_before_scanning(source, tmp_path, monkeypatch, fake_dast):
+    monkeypatch.chdir(tmp_path)
+    bad = _write_key(tmp_path, {"app": "x", "vulns": [{"id": "V1", "cwe": 89, "kind": "pair"}]})
+    res = CliRunner().invoke(app, ["scan", "--source", str(source), "--target", TARGET, "--key", str(bad)])
+    assert res.exit_code == 1 and "answer key" in res.output
+    assert fake_dast.calls == [], "a bad key must fail before any request is sent"
+
+
+def test_scan_records_its_output_folder_in_the_store_but_not_in_scan_meta(source, tmp_path, fake_dast):
+    result = _scan(source, tmp_path / "out", tmp_path / "scans.db")
+    with Storage(tmp_path / "scans.db") as store:
+        row = store.get_scan(result.scan_id)
+    assert row["config"]["output"]["dir"] == str((tmp_path / "out").resolve())
+    assert "output" not in result.meta["config"]  # a local path does not belong in the shared meta file

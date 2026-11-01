@@ -58,6 +58,21 @@ def load_meta(path: Optional[Path]) -> Optional[dict]:
     return data
 
 
+def load_eval(path: Optional[Path]) -> Optional[dict]:
+    """The JSON `FlowStopper eval --out` / `scan --key` wrote (shown on the HTML report's Evaluation tab)."""
+    if path is None:
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise ReportError(f"cannot read evaluation file {path}: {exc.strerror or exc}") from exc
+    except ValueError as exc:
+        raise ReportError(f"evaluation file {path} is not valid JSON: {exc}") from exc
+    if not isinstance(data, dict) or not isinstance(data.get("metrics"), dict):
+        raise ReportError(f"evaluation file {path} is not an `eval` result (no 'metrics' object)")
+    return data
+
+
 def write_reports(
     issues: list[Issue],
     meta: Optional[dict],
@@ -65,10 +80,11 @@ def write_reports(
     html: Optional[Path] = None,
     sarif: Optional[Path] = None,
     md: Optional[Path] = None,
+    eval_report: Optional[dict] = None,
 ) -> list[tuple[str, Path]]:
     """Render and write each requested format; returns (format, path) for what was written."""
     jobs: list[tuple[str, Optional[Path], Callable[[], str]]] = [
-        ("html", html, lambda: render_html(issues, meta)),
+        ("html", html, lambda: render_html(issues, meta, eval_report=eval_report)),
         ("sarif", sarif, lambda: json.dumps(to_sarif(issues, meta), indent=2, ensure_ascii=False) + "\n"),
         ("md", md, lambda: render_markdown(issues, meta)),
     ]
@@ -92,6 +108,10 @@ def report_command(
     ] = None,
     meta: Annotated[
         Optional[Path], typer.Option("--meta", help="scan_meta.json (target, timings) for the report header")
+    ] = None,
+    eval: Annotated[  # noqa: A002 - the option is named --eval
+        Optional[Path],
+        typer.Option("--eval", help="evaluation JSON from `eval --out` / `scan --key`: shown on the Evaluation tab"),
     ] = None,
     html: Annotated[Optional[Path], typer.Option("--html", help="write the self-contained HTML report here")] = None,
     sarif: Annotated[Optional[Path], typer.Option("--sarif", help="write SARIF 2.1.0 here")] = None,
@@ -117,7 +137,8 @@ def report_command(
     try:
         loaded = load_issues(issues)
         scan_meta = load_meta(meta)
-        written = write_reports(loaded, scan_meta, html=html, sarif=sarif, md=md)
+        evaluation = load_eval(eval)
+        written = write_reports(loaded, scan_meta, html=html, sarif=sarif, md=md, eval_report=evaluation)
     except ReportError as exc:
         typer.echo(f"report: {exc}", err=True)
         raise typer.Exit(code=1) from None

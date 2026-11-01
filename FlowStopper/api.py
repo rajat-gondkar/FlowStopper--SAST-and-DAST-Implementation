@@ -147,13 +147,39 @@ def _run_scan(
         logger.exception("cannot mark scan %s as failed", scan_id)
 
 
-def _read_meta(out_root: Path, scan_id: str) -> Optional[dict]:
-    """scan_meta.json of an API-run scan, or None (CLI-run scans write theirs elsewhere)."""
-    path = out_root / scan_id / pipeline.META_FILE
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
+def _scan_dirs(out_root: Path, row: dict) -> list[Path]:
+    """Where a scan's output files can be: the API's own folder, and the folder the scan recorded.
+
+    `FlowStopper scan --out DIR` records DIR in its stored row, so a CLI-run scan's `scan_meta.json`
+    and `evaluation.json` are found too. Only those two fixed file names are ever read from it.
+    """
+    dirs = [out_root / str(row["id"])]
+    output = (row.get("config") or {}).get("output")
+    recorded = output.get("dir") if isinstance(output, dict) else None
+    if isinstance(recorded, str) and recorded:
+        dirs.append(Path(recorded))
+    return dirs
+
+
+def _read_json_file(dirs: list[Path], name: str) -> Optional[dict]:
+    for directory in dirs:
+        try:
+            data = json.loads((directory / name).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(data, dict):
+            return data
+    return None
+
+
+def _read_meta(out_root: Path, row: dict) -> Optional[dict]:
+    """scan_meta.json of the scan, from the API's folder or the folder the scan was run into."""
+    return _read_json_file(_scan_dirs(out_root, row), pipeline.META_FILE)
+
+
+def _read_evaluation(out_root: Path, row: dict) -> Optional[dict]:
+    """evaluation.json (`scan --key`) of the scan, or None when it was not scored."""
+    return _read_json_file(_scan_dirs(out_root, row), pipeline.EVALUATION_FILE)
 
 
 def create_app(db_path: Path | str = DEFAULT_DB_PATH, out_root: Path | str = DEFAULT_OUT_ROOT) -> FastAPI:
@@ -181,19 +207,19 @@ def create_app(db_path: Path | str = DEFAULT_DB_PATH, out_root: Path | str = DEF
             raise HTTPException(status_code=404, detail=f"unknown scan {scan_id!r}")
         return row
 
-    def _completed_scan(db: Storage, scan_id: str) -> tuple[list, dict]:
+    def _completed_scan(db: Storage, scan_id: str) -> tuple[list, dict, Optional[dict]]:
         row = _scan_row(db, scan_id)
         if row["status"] != "completed":
             raise HTTPException(status_code=409, detail=f"scan {scan_id!r} is {row['status']}, not completed")
         issues = db.get_issues(scan_id=scan_id, include_suppressed=True)
-        meta = _read_meta(app.state.out_root, scan_id) or {
+        meta = _read_meta(app.state.out_root, row) or {
             "scan_id": scan_id,
             "status": row["status"],
             "source": row["source_path"],
             "target": row["target_url"],
             "started_at": row["started_at"],
         }
-        return issues, meta
+        return issues, meta, _read_evaluation(app.state.out_root, row)
 
     @app.get("/health")
     def health() -> dict:
@@ -239,7 +265,7 @@ def create_app(db_path: Path | str = DEFAULT_DB_PATH, out_root: Path | str = DEF
         with Storage(app.state.db_path) as db:
             row = _scan_row(db, scan_id)
             issues = db.get_issues(scan_id=scan_id, include_suppressed=True)
-        meta = _read_meta(app.state.out_root, scan_id)
+        meta = _read_meta(app.state.out_root, row)
         return {
             "scan_id": row["id"],
             "status": row["status"],
@@ -283,13 +309,13 @@ def create_app(db_path: Path | str = DEFAULT_DB_PATH, out_root: Path | str = DEF
     @app.get("/scans/{scan_id}/report", response_class=HTMLResponse)
     def get_report(scan_id: str) -> HTMLResponse:
         with Storage(app.state.db_path) as db:
-            issues, meta = _completed_scan(db, scan_id)
-        return HTMLResponse(render_html(issues, meta))
+            issues, meta, evaluation = _completed_scan(db, scan_id)
+        return HTMLResponse(render_html(issues, meta, eval_report=evaluation))
 
     @app.get("/scans/{scan_id}/sarif")
     def get_sarif(scan_id: str) -> JSONResponse:
         with Storage(app.state.db_path) as db:
-            issues, meta = _completed_scan(db, scan_id)
+            issues, meta, _ = _completed_scan(db, scan_id)
         return JSONResponse(to_sarif(issues, meta), media_type=SARIF_MEDIA_TYPE)
 
     return app

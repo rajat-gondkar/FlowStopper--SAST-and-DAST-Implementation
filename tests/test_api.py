@@ -260,3 +260,47 @@ def test_live_api_scan_of_mock_a(tmp_path):
     scan = client.get(f"/scans/{scan_id}").json()
     assert scan["status"] == "completed" and scan["counts"]["confirmed"] >= 1
     assert client.get(f"/scans/{scan_id}/report").status_code == 200
+
+
+# --------------------------------------------------------------------------- scores for CLI-run scans
+def test_report_of_a_cli_scan_shows_its_scores(source, tmp_path, monkeypatch, fake_dast, db_path):
+    """`scan --key` writes evaluation.json; the API finds it through the folder recorded in the store."""
+    from tests.test_pipeline import KEY
+
+    key = tmp_path / "key.json"
+    key.write_text(json.dumps(KEY), encoding="utf-8")
+    out = tmp_path / "cli_out"
+    res = CliRunner().invoke(
+        cli_app,
+        [
+            "scan",
+            "--source",
+            str(source),
+            "--target",
+            TARGET,
+            "--out",
+            str(out),
+            "--db",
+            str(db_path),
+            "--key",
+            str(key),
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    (scan_id,) = _scan_ids(db_path)
+    # an API pointed at a different out_root still finds the CLI scan's files
+    client = TestClient(create_app(db_path, tmp_path / "elsewhere"))
+    html = client.get(f"/scans/{scan_id}/report").text
+    assert "scored-demo-app" in html and "Not evaluated" not in html
+    assert client.get(f"/scans/{scan_id}").json()["truncated"] is False  # meta found via the recorded folder too
+
+
+def test_report_of_an_unscored_cli_scan_says_not_evaluated(source, tmp_path, fake_dast, db_path):
+    res = CliRunner().invoke(
+        cli_app,
+        ["scan", "--source", str(source), "--target", TARGET, "--out", str(tmp_path / "o"), "--db", str(db_path)],
+    )
+    assert res.exit_code == 0, res.output
+    (scan_id,) = _scan_ids(db_path)
+    client = TestClient(create_app(db_path, tmp_path / "elsewhere"))
+    assert "Not evaluated" in client.get(f"/scans/{scan_id}/report").text
