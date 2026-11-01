@@ -225,8 +225,8 @@ Carry these into **P4-A1** (generic-rule backlog) / **P4-A2** (B-2 suppression):
   - Clean clone: `make setup && make check` green; `make demo` passes end to end. Decision A-74.
 - 2026-11-01 — **Two new generic SAST rules (A-76, CC-02)**: CWE-502 insecure deserialization and CWE-489
   debug mode left on, with tests. Mock A and Mock B results unchanged (13/13 · 12/13 · 9/10 · 0 wrong · 0
-  false alarms; 13/13 · 11/14 · 8/10 · 0 · 0), `make check` green (796 passed, 2 skipped). Dev B still
-  owes the ACK for CC-02 and a look at the new `fixes.py` template.
+  false alarms; 13/13 · 11/14 · 8/10 · 0 · 0), `make check` green (796 passed, 2 skipped). Dev B has left the
+  project, so CC-02 needs no ACK and Dev A may edit any file.
 - 2026-11-01 — **Post-release changes (A-75)**: time budgets removed everywhere (organisers: not needed);
   `make showcase APP=<folder> [TARGET=url] [KEY=file] [AUTH=file]` scans any folder, with no answer key
   needed. `make check` green (766 passed, 2 skipped). Showcase tested on a folder path, `--target`,

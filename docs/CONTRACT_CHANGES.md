@@ -64,6 +64,7 @@ the freeze without an explicit joint decision recorded here.
 - Why: the new SAST rule `py.deserialization.*` (pickle/marshal/yaml loads of request data) needs a
   catalogue entry; `get_cwe(502)` raises KeyError otherwise.
 - Impact on fixtures/schemas: none (no model changed; fixtures contain no CWE-502).
-- ACK by Dev B: **pending** — Dev B, please review `cwe.py` and the `fixes.py` template and reply here.
+- ACK by Dev B: **not required** — Dev B has finished his work and left the project (2026-11-01); Dev A now
+  owns every file in the repository.
 
 _(Contracts not yet frozen; once `contract-v1` is tagged, add further entries above.)_

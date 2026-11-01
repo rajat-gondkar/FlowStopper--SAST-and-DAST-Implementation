@@ -27,8 +27,8 @@ Dev A's own design decisions (ids `A-NN`, newest first). Joint/Phase-0 decisions
   `auto_verify` and every `truncated` flag and banner (scan_meta, DAST/auto-verify stats, `eval`,
   report, SARIF, `GET /scans/{id}`) are gone. A scan runs to completion; each request is still
   bounded by the client's 3 s connect and 10 s total timeouts. Old `scan_meta.json` files that carry
-  a `truncated` key are still read without error. This edits Dev B's files (`dast/`, `report/`,
-  `evalkit/`, `correlate/`) at the user's explicit request; Dev B should pull before editing them.
+  a `truncated` key are still read without error. This edits files that were Dev B's (`dast/`,
+  `report/`, `evalkit/`, `correlate/`) at the user's request; Dev B has since left the project.
   `scripts/showcase.sh` now takes a folder path (leading `~` expanded) besides `mock_a`/`mock_b`:
   `--target URL` scans an app that is already running; otherwise it starts the folder's compose file
   and uses the first published port that answers HTTP. `--key` and `--auth` are optional, so a scan
