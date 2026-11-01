@@ -1,0 +1,55 @@
+{
+  "schema": "flowstopper-metrics/1",
+  "app": "shoplite-a",
+  "key": "apps/mock_a/answer_key.json",
+  "evaluated_at": "2026-11-01T01:30:28+00:00",
+  "source": {
+    "kind": "issues",
+    "scan_id": "a01910e47d2274e0",
+    "issues": "out/final_mock_a/issues.json",
+    "db": null
+  },
+  "run_time_s": 1.345,
+  "truncated": false,
+  "issues": {
+    "total": 27,
+    "reported": 19,
+    "suppressed": 8
+  },
+  "unplanted": 3,
+  "metrics": {
+    "code_detection": {
+      "found": 13,
+      "total": 13,
+      "rate": 1.0
+    },
+    "runtime_detection": {
+      "found": 12,
+      "total": 13,
+      "rate": 0.9231
+    },
+    "correct_links": {
+      "found": 9,
+      "total": 10,
+      "rate": 0.9
+    },
+    "wrong_links": {
+      "count": 0,
+      "confirmed": 9,
+      "rate": 0.0
+    },
+    "false_alarms": {
+      "count": 0,
+      "reported": 19,
+      "rate": 0.0
+    }
+  },
+  "status": {
+    "code_detection": "great",
+    "runtime_detection": "great",
+    "correct_links": "great",
+    "wrong_links": "great",
+    "false_alarms": "great",
+    "run_time": "great"
+  }
+}

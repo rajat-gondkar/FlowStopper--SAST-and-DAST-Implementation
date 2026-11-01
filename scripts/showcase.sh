@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # One command to showcase FlowStopper on a demo target (Owner: A).
 #
-#   scripts/showcase.sh mock_a        (also: -MockA, mock_b, we45, owasp)
+#   scripts/showcase.sh mock_a        (also: -MockA, mock_b, -MockB)
 #   scripts/showcase.sh stop          stop the target containers and the API this script started
 #   scripts/showcase.sh list          show the available targets
 #
@@ -19,26 +19,19 @@ bold() { printf '\033[1m%s\033[0m\n' "$*"; }
 die() { echo "showcase: $*" >&2; exit 1; }
 
 # ---- target table ---------------------------------------------------------------------------
-# sets: LABEL COMPOSE PROJECT PORT SRC KEY AUTH
+# sets: LABEL COMPOSE PROJECT PORT SRC KEY UNSEEN
 select_target() {
   local want
   want=$(printf '%s' "$1" | tr 'A-Z' 'a-z' | sed 's/^-*//; s/[-_ ]//g')
-  AUTH=""
+  UNSEEN=""
   case "$want" in
     mocka)
       LABEL="Mock A (Flask)"; COMPOSE="apps/mock_a/docker-compose.yml"; PROJECT=""
       PORT=5050; SRC="apps/mock_a"; KEY="apps/mock_a/answer_key.json" ;;
     mockb)
       LABEL="Mock B (FastAPI, held-out)"; COMPOSE="apps/mock_b/docker-compose.yml"; PROJECT=""
-      PORT=8090; SRC="apps/mock_b"; KEY="apps/mock_b/answer_key.json" ;;
-    we45|bench|vulnerableflaskapp)
-      LABEL="we45 Vulnerable-Flask-App (third-party)"; COMPOSE="bench/vulnerable-flask-app/docker-compose.yml"
-      PROJECT="flowstopper-bench"; PORT=8100; SRC="bench/vulnerable-flask-app/src"
-      KEY="bench/vulnerable-flask-app/answer_key.json"; AUTH="out/b/auth.json" ;;
-    owasp|owaspbenchmark|owaspbenchmarkpython)
-      LABEL="OWASP Benchmark for Python (third-party)"; COMPOSE="bench/owasp-benchmark-python/docker-compose.yml"
-      PROJECT=""; PORT=8110; SRC="bench/owasp-benchmark-python/src"
-      KEY="bench/owasp-benchmark-python/answer_key.json" ;;
+      PORT=8090; SRC="apps/mock_b"; KEY="apps/mock_b/answer_key.json"
+      UNSEEN="docs/metrics/mock_b_first_run.json" ;;   # its first run, before any tuning (spec P6-J1)
     *) return 1 ;;
   esac
   NAME="$want"
@@ -55,14 +48,12 @@ usage: scripts/showcase.sh <target>      (or: make showcase APP=<target>)
 
 targets:  mock_a   our Flask fixture                 (also -MockA)
           mock_b   our FastAPI fixture, held out     (also -MockB)
-          we45     third-party Flask benchmark, logged in
-          owasp    third-party OWASP Benchmark for Python (151 keyed vulnerabilities)
 other:    stop     stop what this script started
 EOF
 }
 
 stop_all() {
-  for t in mock_a mock_b we45 owasp; do
+  for t in mock_a mock_b; do
     select_target "$t" && [ -f "$COMPOSE" ] && compose "$COMPOSE" "$PROJECT" down >/dev/null 2>&1 && echo "stopped: $LABEL"
   done
   if [ -f "$PIDFILE" ]; then
@@ -81,22 +72,13 @@ select_target "$1" || { echo "showcase: unknown target '$1'" >&2; usage; exit 64
 # ---- preflight --------------------------------------------------------------------------------
 [ -x "$FS" ] || die "$FS not found; run 'make setup' first"
 [ -f "$COMPOSE" ] || die "$COMPOSE not found (is this target on another branch?)"
-[ -d "$SRC" ] || die "$SRC not found${NAME:+ (for we45 / owasp run 'make bench-fetch' first)}"
+[ -d "$SRC" ] || die "$SRC not found"
 if ! docker info >/dev/null 2>&1; then
   echo "Docker is not running; trying 'colima start' ..."
   colima start >/dev/null 2>&1 || true
   docker info >/dev/null 2>&1 || die "Docker is not running. Start Docker Desktop or Colima and retry."
 fi
 mkdir -p out
-if [ -n "$AUTH" ] && [ ! -f "$AUTH" ]; then
-  mkdir -p "$(dirname "$AUTH")"
-  cat > "$AUTH" <<EOF
-{"login": {"url": "http://127.0.0.1:${PORT}/login", "method": "POST",
- "json_body": {"username": "admin", "password": "admin123"},
- "token_response_header": "Authorization", "token_request_header": "Authorization", "token_prefix": ""}}
-EOF
-  echo "wrote $AUTH (the benchmark's public demo login; git-ignored)"
-fi
 
 # ---- 1. start the target ----------------------------------------------------------------------
 bold "[1/4] Starting $LABEL on http://127.0.0.1:${PORT} ..."
@@ -115,9 +97,9 @@ OUT="out/showcase_${NAME}"
 rm -rf "$OUT"
 bold "[2/4] Scanning (SAST + DAST + correlation) and scoring against the answer key ..."
 EXTRA_ARGS=()
-[ -n "$AUTH" ] && EXTRA_ARGS+=(--auth-config "$AUTH")
 if [ -f "$KEY" ]; then
   EXTRA_ARGS+=(--key "$KEY")   # scores go to the terminal AND the report's Evaluation tab
+  [ -n "$UNSEEN" ] && [ -f "$UNSEEN" ] && EXTRA_ARGS+=(--unseen-from "$UNSEEN")
 else
   echo "      (no answer key for this target: no scores, the Evaluation tab will say so)"
 fi

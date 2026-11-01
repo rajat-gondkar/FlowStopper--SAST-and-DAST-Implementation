@@ -472,3 +472,65 @@ def test_scan_records_its_output_folder_in_the_store_but_not_in_scan_meta(source
         row = store.get_scan(result.scan_id)
     assert row["config"]["output"]["dir"] == str((tmp_path / "out").resolve())
     assert "output" not in result.meta["config"]  # a local path does not belong in the shared meta file
+
+
+# --------------------------------------------------------------------------- scan --unseen-from
+FIRST_RUN = {
+    "app": "held-out-demo",
+    "evaluated_at": "2026-10-31T22:16:12+00:00",
+    "metrics": {"correct_links": {"found": 6, "total": 10, "rate": 0.6}},
+}
+
+
+def _first_run_file(tmp_path, data=None) -> Path:
+    path = tmp_path / "first_run.json"
+    path.write_text(json.dumps(FIRST_RUN if data is None else data), encoding="utf-8")
+    return path
+
+
+def test_cli_scan_unseen_from_fills_the_unseen_app_row_with_the_first_run(source, tmp_path, monkeypatch, fake_dast):
+    monkeypatch.chdir(tmp_path)
+    args = ["scan", "--source", str(source), "--target", TARGET, "--out", "o", "--key", str(_write_key(tmp_path))]
+    res = CliRunner().invoke(app, args + ["--unseen-from", str(_first_run_file(tmp_path))])
+    assert res.exit_code == 0, res.output
+    saved = json.loads((tmp_path / "o" / "evaluation.json").read_text(encoding="utf-8"))
+    assert saved["metrics"]["unseen_app"] == {
+        "found": 6,
+        "total": 10,
+        "rate": 0.6,
+        "note": "First run on held-out-demo (2026-10-31), before any tuning. Not the current score.",
+    }
+    html = (tmp_path / "o" / "report.html").read_text(encoding="utf-8")
+    assert "6/10" in html and "First run on held-out-demo" in html and "not part of this evaluation" not in html
+
+
+def test_cli_scan_without_unseen_from_leaves_the_row_unmeasured(source, tmp_path, monkeypatch, fake_dast):
+    monkeypatch.chdir(tmp_path)
+    args = ["scan", "--source", str(source), "--target", TARGET, "--out", "o", "--key", str(_write_key(tmp_path))]
+    assert CliRunner().invoke(app, args).exit_code == 0
+    saved = json.loads((tmp_path / "o" / "evaluation.json").read_text(encoding="utf-8"))
+    assert "unseen_app" not in saved["metrics"]
+    assert "not part of this evaluation" in (tmp_path / "o" / "report.html").read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"metrics": {}},
+        {"metrics": {"correct_links": {"found": 3, "total": 0}}},
+        {"metrics": {"correct_links": {"found": 11, "total": 10}}},
+    ],
+)
+def test_cli_scan_rejects_a_bad_unseen_from_file_before_scanning(source, tmp_path, monkeypatch, fake_dast, bad):
+    monkeypatch.chdir(tmp_path)
+    args = ["scan", "--source", str(source), "--target", TARGET, "--key", str(_write_key(tmp_path))]
+    res = CliRunner().invoke(app, args + ["--unseen-from", str(_first_run_file(tmp_path, bad))])
+    assert res.exit_code == 1 and "--unseen-from" in res.output
+    assert fake_dast.calls == []
+
+
+def test_cli_scan_unseen_from_needs_a_key(source, tmp_path, monkeypatch, fake_dast):
+    monkeypatch.chdir(tmp_path)
+    args = ["scan", "--source", str(source), "--target", TARGET, "--unseen-from", str(_first_run_file(tmp_path))]
+    res = CliRunner().invoke(app, args)
+    assert res.exit_code == 1 and "needs --key" in res.output and fake_dast.calls == []

@@ -141,6 +141,26 @@ def write_reports(
     return paths
 
 
+def load_unseen_score(path: Path | str) -> dict:
+    """The correct-link score of a first run on a held-out app, shaped for the report's Unseen app row.
+
+    `path` is an `eval --out` JSON recorded before the app was used for tuning (spec section 4, P6-J1).
+    Raises ValueError when it holds no usable `metrics.correct_links`.
+    """
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+        links = data["metrics"]["correct_links"]
+        found, total = int(links["found"]), int(links["total"])
+    except (KeyError, TypeError) as exc:
+        raise ValueError(f"{path} is not an eval result with metrics.correct_links") from exc
+    if total <= 0 or not 0 <= found <= total:
+        raise ValueError(f"{path} has no usable correct_links counts ({found}/{total})")
+    when = str(data.get("evaluated_at") or "")[:10]
+    app = data.get("app") if isinstance(data.get("app"), str) else "the held-out app"
+    note = f"First run on {app}{f' ({when})' if when else ''}, before any tuning. Not the current score."
+    return {"found": found, "total": total, "rate": round(found / total, 4), "note": note}
+
+
 def unique_scan_id(db: Storage, source: str, target: str, started_at: str) -> str:
     """Storage's scan id, made unique when another scan of the same input started in the same second.
 
@@ -366,6 +386,14 @@ def scan_command(
     db: Annotated[
         Path, typer.Option("--db", envvar="FLOWSTOPPER_DB", help="SQLite store shared with `serve` and `eval --scan`")
     ] = DEFAULT_DB_PATH,
+    unseen_from: Annotated[
+        Optional[Path],
+        typer.Option(
+            "--unseen-from",
+            help="eval JSON of a FIRST run on a held-out app (e.g. docs/metrics/mock_b_first_run.json): its "
+            "correct-link score fills the report's 'Unseen app' row. Needs --key.",
+        ),
+    ] = None,
     key: Annotated[
         Optional[Path],
         typer.Option(
@@ -386,6 +414,16 @@ def scan_command(
             parse_fail_on(fail_on)
         except ValueError as exc:
             raise typer.BadParameter(str(exc), param_hint="'--fail-on'") from exc
+    unseen: Optional[dict] = None
+    if unseen_from is not None:
+        if key is None:
+            typer.echo("FlowStopper scan: --unseen-from needs --key (it adds to the scores)", err=True)
+            raise typer.Exit(code=1)
+        try:
+            unseen = load_unseen_score(unseen_from)
+        except (OSError, ValueError) as exc:
+            typer.echo(f"FlowStopper scan: bad --unseen-from file: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
     if key is not None:  # a bad key should fail now, not after a scan
         try:
             load_key(key)
@@ -422,7 +460,10 @@ def scan_command(
     eval_failed = False
     if key is not None:
         try:
-            eval_report, _ = run_eval(key, result.issues_path, Path(out) / EVALUATION_FILE)
+            eval_report, eval_path = run_eval(key, result.issues_path, Path(out) / EVALUATION_FILE)
+            if unseen is not None:
+                eval_report["metrics"]["unseen_app"] = unseen
+                eval_path.write_text(json.dumps(eval_report, indent=2) + "\n", encoding="utf-8")
         except (EvalError, OSError, ValueError) as exc:
             typer.echo(f"FlowStopper scan: could not score the scan against {key}: {exc}", err=True)
             eval_failed = True
@@ -464,6 +505,8 @@ def scan_command(
         typer.echo(
             f"unplanted (informational): {eval_report['unplanted']} reported issue(s) match no planted vuln or decoy"
         )
+        if unseen is not None:
+            typer.echo(f"scan: Unseen app row = {unseen['found']}/{unseen['total']} (first run, from {unseen_from})")
         typer.echo(f"scan: scores -> {Path(out) / EVALUATION_FILE} and the report's Evaluation tab")
     if eval_failed:
         raise typer.Exit(code=1)

@@ -3,6 +3,17 @@
 Dev A's own design decisions (ids `A-NN`, newest first). Joint/Phase-0 decisions are in the shared
 [`DECISIONS.md`](DECISIONS.md); Dev B's are in [`DECISIONS_Dev2.md`](DECISIONS_Dev2.md). Using an
 `A-` prefix keeps our ids from ever colliding with Dev B's `B-` ids.
+- **A-74 (Phase 7 release docs; P7-B1 written on Dev B's behalf)**: README follows spec Appendix E.
+  Its quick start is `make demo` (Docker and make only), followed by `make showcase`. Its results
+  section gives the two Docker-measured mock apps from `docs/metrics/final_mock_{a,b}.json`. The unseen-app
+  figure is Mock B's first run (6/10), not its tuned 8/10. `docs/ARCHITECTURE.md` and
+  `docs/LIMITATIONS.md` (Dev B's P7-B1) were finalised here on his behalf, from the code's real
+  constants and the measured gaps. THIRD_PARTY versions and licences were checked against both lock
+  files and the installed package metadata. Hard-coded secrets keep the A07 mapping: OWASP 2025 lists
+  CWE-798 and CWE-259 under A07, and CWE-321 under A04, but no FlowStopper rule emits 321 (the secrets
+  detector reports 798), so `cwe.py` (frozen) stays as is. The git history was checked: no
+  `target_src/`, `keys/`, `*.key.json`, local notes, databases or cloned third-party sources were ever
+  committed on any branch.
 - **A-73 (`make_response` with a literal tuple: only the body is HTML)**: Flask unpacks
   `make_response((body, status_or_headers[, headers]))`, so only the first element reaches the page.
   For a `make_response` sink whose first argument is a literal 2- or 3-tuple, the CWE-79 check now looks

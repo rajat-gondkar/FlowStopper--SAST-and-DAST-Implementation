@@ -94,7 +94,7 @@ demo-down: ## stop the Mock A container started by make demo
 # Which bench/<app>/ the fetch/down targets use: make bench-fetch BENCH_APP=owasp-benchmark-python
 BENCH_APP ?= vulnerable-flask-app
 
-showcase: ## scan a demo target and print every link: make showcase APP=mock_a (mock_a|mock_b|we45|owasp)
+showcase: ## scan a demo target and print every link: make showcase APP=mock_a (mock_a|mock_b)
 	@./scripts/showcase.sh $(or $(APP),mock_a)
 
 showcase-stop: ## stop the targets and the API that `make showcase` started

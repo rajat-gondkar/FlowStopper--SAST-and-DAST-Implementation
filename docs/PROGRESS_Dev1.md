@@ -215,3 +215,12 @@ Carry these into **P4-A1** (generic-rule backlog) / **P4-A2** (B-2 suppression):
 - [x] **Receiver-based leaf matching is broad** (possible FP source): `PATH_ACCESS` fires on any
   tainted receiver's `.open()`/`.read_text()`/`.write_text()`, SQL on `.raw`/`.extra`. Needs a
   false-positive check against the real app in Phase 3/4.
+- 2026-11-01 — **Phase 7 (release docs)**:
+  - README rewritten to the spec's Appendix E outline, with report screenshots in `docs/img/`.
+  - ARCHITECTURE and LIMITATIONS finalised, on Dev B's behalf.
+  - THIRD_PARTY verified against the lock files.
+  - Final Docker results written to `docs/metrics/final_mock_{a,b}.json`: Mock A 13/13 · 12/13 · 9/10 · 0/9 · 0/19;
+    Mock B 13/13 · 11/14 · 8/10 · 0/8 · 0/19; unseen app 6/10 (first run).
+  - Git history is clean of confidential files (R5).
+  - Clean clone: `make setup && make check` green; `make demo` passes end to end. Decision A-74.
+

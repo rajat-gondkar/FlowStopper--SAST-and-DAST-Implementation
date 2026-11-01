@@ -376,11 +376,14 @@ def _rate_row(
         )
     rate = _number(data.get("rate"))
     rate = num / den if rate is None else rate
+    # The Unseen app score is a first run recorded earlier, so it says so (the label travels in the data).
+    label = data.get("note") if key == "unseen_app" and isinstance(data.get("note"), str) else ""
     return EvalRow(
         status=grade(rate, good, great, higher),
         value_text=_fmt_pct(rate),
         count_text=f"{num:.0f}/{den:.0f}",
         value_pct=max(0.0, min(rate * 100, 100.0)),
+        note=label,
         **common_args,
     )
 

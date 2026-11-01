@@ -7,11 +7,11 @@ with `make lock` and update this table in the same commit.
 
 ## AI-assisted development
 
-This project was built with the help of AI coding assistants (large-language-model pair
-programmers inside the editor). AI was used to scaffold the repository, draft module code,
-write tests and documentation, and review diffs. All design decisions, the correlation
-algorithm, the taint engine, the DAST checks and the scoring were specified by the team and
-reviewed by the team; no third-party scanner code was copied (rule R1).
+This project was built with the help of AI coding assistants:
+- **Tools:** Kiro, an AI-powered IDE, using Anthropic Claude models. Both developers drove agents in it, including multi-step agent workflows with separate coding and review steps.
+- **What AI did:** scaffold the repository, draft module code, write tests and documentation, run and triage scans, and review diffs.
+- **What the team did:** specified and reviewed every design decision, including the correlation algorithm, the taint engine, the DAST checks and the scoring. Each judgement call is recorded in `docs/DECISIONS*.md`.
+- **No copied code (rule R1):** no third-party scanner code was copied, and every rule was written for this project.
 
 ## Runtime dependencies (`requirements.lock`)
 
@@ -63,6 +63,16 @@ Transitive runtime dependencies (installed automatically, pinned in `requirement
 | pluggy | 1.7.0 | MIT | (pytest transitive) |
 | packaging | 26.3 | Apache-2.0 OR BSD-2-Clause | (pytest transitive) |
 
+## Tools used during development (not shipped, not dependencies)
+
+| Tool | Licence | How we used it |
+|---|---|---|
+| Docker Engine / Docker Compose, Colima | Apache-2.0 / MIT | Run the mock apps, the benchmark apps and the FlowStopper image locally |
+| Base images `python:3.11-slim` (FlowStopper, Mock A, Mock B), `python:3.12-slim` and `python:2.7.14-jessie` (benchmark target containers) | Python Software Foundation Licence + the Debian packages' licences | Container runtime for local runs only |
+| Flask and Werkzeug `>=3.0,<4.0` (installed only inside Mock A's container, `apps/mock_a/requirements.txt`) | BSD-3-Clause | Mock A, our Flask fixture app. Not a dependency of FlowStopper |
+| Google Chrome (headless) | Proprietary freeware | Screenshots of the HTML report for the README (`docs/img/`) |
+| GitHub | Hosted service | Private source repository |
+
 ## Standard library only (no third-party package)
 
 Core analysis uses the Python standard library: `ast` (all SAST parsing — rule R7, parse only),
@@ -104,4 +114,7 @@ Written from scratch by the team for this event (rule R1, R8):
   benchmark apps' own source, which is third-party (see the section above) and never committed.
 - All fixtures, tests, scripts and documentation.
 
-> Verify every licence and version against PyPI before the final submission (task P7-A2).
+> **Verified for v1.0 (P7-A2, 2026-11-01).** Every runtime and development package listed above was
+> checked against `requirements.lock` and `requirements-dev.lock`: there are no missing packages, no
+> extra ones and no version mismatches. Each licence was checked against the installed package's own
+> metadata (`License-Expression` / licence classifiers).
