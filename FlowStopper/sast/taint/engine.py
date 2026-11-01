@@ -682,6 +682,9 @@ class _FunctionWalk:
 
         spec = sinks.sink_at(node, self.ctx)
         if spec is not None:
+            if _is_make_response(node) and node.args and _is_response_tuple(node.args[0]):
+                # `make_response((body, status, headers))`: only the body is HTML; header values are not
+                args = (self._expr(node.args[0].elts[0], env), *args[1:])
             self._call_sink(node, spec, receiver, args, kwargs)
             return UNTAINTED if spec.result_barrier else every
 
@@ -923,6 +926,18 @@ def _binop_kind(op: ast.operator) -> Optional[str]:
     if isinstance(op, ast.Mod):
         return "percent"
     return None
+
+
+def _is_make_response(node: ast.Call) -> bool:
+    func = node.func
+    return (isinstance(func, ast.Name) and func.id == "make_response") or (
+        isinstance(func, ast.Attribute) and func.attr == "make_response"
+    )
+
+
+def _is_response_tuple(node: ast.expr) -> bool:
+    """A literal `(body, status_or_headers[, headers])` tuple, as Flask's `make_response` unpacks it."""
+    return isinstance(node, ast.Tuple) and 2 <= len(node.elts) <= 3 and not isinstance(node.elts[0], ast.Starred)
 
 
 def _union_all(values: tuple[TaintValue, ...]) -> TaintValue:

@@ -6,6 +6,8 @@ Section 4 metrics written by `FlowStopper eval`. One file per run.
 |---|---|---|
 | `baseline_mock_a.json` | Mock A (our own Flask fixture) | Phase 3 baseline, before any Phase 4 tuning |
 | `baseline_bench.json` | we45 Vulnerable-Flask-App (third-party benchmark) | Phase 3 baseline, before any Phase 4 tuning |
+| `bench_owasp-benchmark-python_first_run.json` | OWASP Benchmark for Python (second third-party benchmark, `bench/owasp-benchmark-python/`) | First run, frozen before any change (A-70). Never overwrite |
+| `bench_owasp-benchmark-python.md` | OWASP Benchmark for Python | Research table and choice, first-run metrics, triage (fixed vs deferred), round 1 before/after for all four targets, deferred list |
 | `baseline.json` | **organisers' app** | **Not created yet.** The spec's P3-J1 baseline. It is written only when the organisers' app (`target_src/`) and key (`keys/`) are available. Do not fill it from another target. |
 
 Mock B is never scanned before Phase 6 (held-out test), so it has no baseline here.

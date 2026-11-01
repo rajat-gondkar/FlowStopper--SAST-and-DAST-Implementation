@@ -745,6 +745,25 @@ def test_location_header_assignment_is_a_redirect_sink(tmp_path):
     ]
 
 
+def test_make_response_tuple_only_the_body_is_html(tmp_path):
+    files = {
+        "app.py": """
+            from flask import Flask, make_response, request
+            app = Flask(__name__)
+            @app.route("/tagged")
+            def tagged():
+                label = request.args.get("label", "")
+                return make_response(("saved", {"X-Label": label}))
+            @app.route("/echoed")
+            def echoed():
+                label = request.args.get("label", "")
+                return make_response((f"<p>{label}</p>", 200, {"X-Mode": "echo"}))
+        """
+    }
+    findings = _findings(tmp_path, files)
+    assert {(f.function, f.cwe) for f in _live(findings)} == {("app.echoed", 79)}
+
+
 # --------------------------------------------------------------------------- P2-A2 summaries
 CROSS_FILE = {
     "app.py": """

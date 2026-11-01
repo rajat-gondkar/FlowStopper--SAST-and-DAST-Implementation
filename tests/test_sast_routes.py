@@ -178,6 +178,72 @@ def test_flask_module_level_app_and_verb_shortcuts(tmp_path):
     assert params(r["POST /submit"]) == {("value", "form")}
 
 
+def test_flask_routes_registered_on_a_function_parameter(tmp_path):
+    files = {
+        "portal/__init__.py": "",
+        # loaded dynamically: no static call site, so the parameter's routes mount at the root
+        "portal/plugins/notes.py": """
+            from flask import request
+
+
+            def setup(server):
+                @server.route("/notes/view", methods=["GET"])
+                def view_note():
+                    return view_note_submit()
+
+                @server.route("/notes/view", methods=["POST"])
+                def view_note_submit():
+                    return request.form.get("title")
+
+                server.add_url_rule("/notes/count", view_func=view_note)
+        """,
+        # a static call site passing a blueprint: the parameter's routes take that blueprint's prefix
+        "portal/plugins/tags.py": """
+            from flask import Blueprint
+
+
+            def attach(target):
+                @target.get("/tags")
+                def list_tags():
+                    return "tags"
+
+
+            tags_bp = Blueprint("tags", __name__, url_prefix="/v2")
+            attach(target=tags_bp)
+        """,
+        "portal/main.py": """
+            import importlib
+
+            from flask import Flask
+
+            server = Flask(__name__)
+            importlib.import_module("portal.plugins.notes").setup(server)
+        """,
+    }
+    r = routes_of(tmp_path, files)
+    assert set(r) == {"GET /notes/view", "POST /notes/view", "GET /notes/count", "GET /v2/tags"}
+    assert r["POST /notes/view"].handler == "portal.plugins.notes.setup.view_note_submit"
+    assert params(r["POST /notes/view"]) == {("title", "form")}
+    assert r["GET /v2/tags"].handler == "portal.plugins.tags.attach.list_tags"
+
+
+def test_parameter_router_outside_flask_is_not_a_flask_route(tmp_path):
+    files = {
+        "svc.py": """
+            from fastapi import FastAPI
+
+            api = FastAPI()
+
+
+            def mount(router):
+                @router.get("/status")
+                def status():
+                    return "ok"
+        """,
+    }
+    assert set(routes_of(tmp_path, files)) == set()
+
+
 # --------------------------------------------------------------------------- FastAPI
 FASTAPI_APP = {
     "api/__init__.py": "",

@@ -91,14 +91,17 @@ demo: ## start Mock A in Docker and scan it end to end with the FlowStopper imag
 demo-down: ## stop the Mock A container started by make demo
 	docker compose -f $(MOCK_A_COMPOSE) down
 
+# Which bench/<app>/ the fetch/down targets use: make bench-fetch BENCH_APP=owasp-benchmark-python
+BENCH_APP ?= vulnerable-flask-app
+
 bench-fetch: ## clone the pinned third-party benchmark app (git-ignored) and run it via Docker Compose
-	./scripts/bench_fetch.sh all
+	./scripts/bench_fetch.sh all $(BENCH_APP)
 
 bench: $(PY) ## scan + eval the benchmark app -> docs/metrics/bench_<app>.json (run `make bench-fetch` first; never gates check)
 	FS=$(abspath $(PY:python=FlowStopper)) ./scripts/bench.sh
 
 bench-down: ## stop the benchmark app
-	./scripts/bench_fetch.sh down
+	./scripts/bench_fetch.sh down $(BENCH_APP)
 
 clean: ## remove caches and scan outputs (keeps .venv)
 	rm -rf .pytest_cache .ruff_cache build *.egg-info out

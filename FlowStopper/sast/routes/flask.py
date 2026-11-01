@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from FlowStopper.models import ParamLocation, Route
-from FlowStopper.sast.index import FunctionInfo, ProjectIndex, iter_block
+from FlowStopper.sast.index import FunctionInfo, ModuleInfo, ProjectIndex, iter_block
 from FlowStopper.sast.routes.common import (
     AUTH_DECORATORS,
     HTTP_VERBS,
@@ -109,6 +109,61 @@ class _FlaskExtractor:
                 kind = "app" if ctor == FLASK_APP else "blueprint"
                 self.objects[key] = _Obj(kind, key, fn.module, url_prefix=prefix, scope=fn.qualname)
                 self.local_objs[(fn.qualname, name)] = key
+        self._discover_param_objects()
+
+    def _discover_param_objects(self) -> None:
+        """Route-registration functions that receive the app as a parameter (`def init(app): @app.route`).
+
+        The parameter becomes a mountable object with no prefix of its own. Each statically resolvable
+        call site that passes a known app or blueprint registers it there; with no such call site (e.g.
+        the module is loaded through `importlib`) it is mounted at the root, like an unregistered
+        blueprint. Only modules that import Flask qualify, so other frameworks' routers are left alone.
+        """
+        params: list[tuple[FunctionInfo, str, int]] = []
+        for fn in self.ix.functions.values():
+            if fn.class_name is not None or not _imports_flask(self.ix.modules[fn.module]):
+                continue
+            positional = [a.arg for a in (*fn.node.args.posonlyargs, *fn.node.args.args)]
+            for name in sorted(self._route_receivers(fn)):
+                if name not in fn.params or (fn.qualname, name) in self.local_objs:
+                    continue
+                key = f"{fn.qualname}::{name}"
+                self.objects[key] = _Obj("blueprint", key, fn.module, scope=fn.qualname)
+                self.local_objs[(fn.qualname, name)] = key
+                params.append((fn, name, positional.index(name) if name in positional else -1))
+        if params:
+            self._param_call_sites(params)
+
+    def _route_receivers(self, fn: FunctionInfo) -> set[str]:
+        """Names used as the receiver of a route decorator on a nested def, or of `add_url_rule`, in `fn`."""
+        names: set[str] = set()
+        for node in ast.walk(fn.node):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node is not fn.node:
+                for dec in node.decorator_list:
+                    if isinstance(dec, ast.Call) and isinstance(dec.func, ast.Attribute):
+                        if _decorator_methods(dec) is not None and isinstance(dec.func.value, ast.Name):
+                            names.add(dec.func.value.id)
+            elif _is_method_call(node, "add_url_rule") and isinstance(node.func.value, ast.Name):
+                names.add(node.func.value.id)
+        return names
+
+    def _param_call_sites(self, params: list[tuple[FunctionInfo, str, int]]) -> None:
+        by_function: dict[str, list[tuple[str, int]]] = {}
+        for fn, name, position in params:
+            by_function.setdefault(fn.qualname, []).append((name, position))
+        for mod in self.ix.modules.values():
+            for node in ast.walk(mod.tree):
+                if not isinstance(node, ast.Call):
+                    continue
+                scope = self.ix.function_at(mod.file, node.lineno)
+                target = self.ix.resolve_expr(node.func, mod.name, scope)
+                for name, position in by_function.get(target or "", []):
+                    arg = keyword(node, name)
+                    if arg is None and 0 <= position < len(node.args):
+                        arg = node.args[position]
+                    parent = self._resolve_obj(arg, mod.name, scope) if arg is not None else None
+                    if parent is not None:
+                        self.registrations.append(_Registration(parent, f"{target}::{name}", None))
 
     @staticmethod
     def _local_constructor_calls(fn: FunctionInfo):
@@ -310,6 +365,10 @@ def _decorator_methods(dec: ast.Call) -> Optional[list[str]]:
     if attr in HTTP_VERBS:
         return [attr.upper()]
     return None
+
+
+def _imports_flask(mod: ModuleInfo) -> bool:
+    return any(target == "flask" or target.startswith("flask.") for _, target in mod.bindings.values())
 
 
 def _is_attr(expr: ast.expr, *names: str) -> bool:

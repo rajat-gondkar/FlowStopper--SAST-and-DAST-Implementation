@@ -78,8 +78,15 @@ our own answer key, Compose wrapper and README for them.
 | App | Pinned commit | Licence / permission | Role |
 |---|---|---|---|
 | [we45 Vulnerable-Flask-App](https://github.com/we45/Vulnerable-Flask-App) | `b6a4f97afd466e83e1f60781494252dec1c37039` | No licence file; **used with the authors' (we45) explicit permission** for this event | Third-party Flask benchmark target (intentionally vulnerable) |
+| [OWASP Benchmark for Python](https://github.com/OWASP-Benchmark/BenchmarkPython) | `f1291485808b66e20ddb6b01b10dc71b3df8c8ba` | GNU GPL v3.0 (`GPL-3.0-only`); cloned locally and scanned only, never modified or redistributed | Third-party Flask benchmark target (OWASP test suite); key transcribed from its official `expectedresults-0.1.csv` (`docs/DECISIONS_Dev1.md` A-70) |
 
-The app is © its authors; it carries no licence file, so we use it **only under the permission the
+The OWASP Benchmark for Python is © the OWASP Benchmark project and its authors, licensed under the
+GPL v3.0. We only clone it into the git-ignored `bench/owasp-benchmark-python/src/` and run it in a
+local container built by our own `Dockerfile`; we ship none of its code. Our files for it
+(`bench/owasp-benchmark-python/{answer_key.json,build_key.py,Dockerfile,.dockerignore,docker-compose.yml,README.md}`)
+are our work.
+
+The we45 app is © its authors; it carries no licence file, so we use it **only under the permission the
 authors (we45) granted us** for this event, and we neither modify nor redistribute it. Our own files
 for it (`bench/vulnerable-flask-app/answer_key.json`, `bench/vulnerable-flask-app/docker-compose.yml`,
 `bench/vulnerable-flask-app/README.md`) are our work and are listed under "own work" below.

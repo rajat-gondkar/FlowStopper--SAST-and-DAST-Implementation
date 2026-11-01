@@ -3,6 +3,69 @@
 Dev A's own design decisions (ids `A-NN`, newest first). Joint/Phase-0 decisions are in the shared
 [`DECISIONS.md`](DECISIONS.md); Dev B's are in [`DECISIONS_Dev2.md`](DECISIONS_Dev2.md). Using an
 `A-` prefix keeps our ids from ever colliding with Dev B's `B-` ids.
+- **A-73 (`make_response` with a literal tuple: only the body is HTML)**: Flask unpacks
+  `make_response((body, status_or_headers[, headers]))`, so only the first element reaches the page.
+  For a `make_response` sink whose first argument is a literal 2- or 3-tuple, the CWE-79 check now looks
+  at that first element only; a tainted header value is no longer reported as XSS. Restricted to
+  `make_response`: Django's `HttpResponse` iterates a tuple as content chunks, so it keeps the whole
+  argument. Header injection is outside our scope. Test:
+  `test_make_response_tuple_only_the_body_is_html`. OWASP bench false alarms 77 → 68 (route-probe
+  baseline), no change elsewhere.
+- **A-72 (traversal proof also matched after HTML-entity decoding)**: `dast/checks/traversal.py` now
+  checks the Appendix B proof `root:[x*!]*:0:0:` on the body as sent and, when it contains `&`, on
+  `html.unescape(body)`. An app that echoes the file through an HTML encoder (`root&#x3a;x&#x3a;0...`)
+  still discloses it. The same matcher is used for the baseline guard and for the auto-verify control
+  signal in `dast/verify.py`, so a benign page that already shows the encoded file still blocks the
+  finding. Payloads are unchanged (R4). Test: `test_traversal_detected_through_html_entity_encoding`.
+  Acting for Dev B with the human's authorisation (DAST area).
+- **A-71 (Flask routes registered on a function parameter)**: `def init(app): @app.route(...)` is a
+  common plugin/registration idiom, and the caller is often dynamic (`importlib`). In a module that
+  imports Flask, a plain function's parameter used as the receiver of a route decorator on a nested
+  def, or of `add_url_rule`, becomes a mountable object with no prefix of its own. Each statically
+  resolvable call site that passes a known app or blueprint (positional or keyword) registers it
+  there, so it inherits that object's mounts; with no resolvable call site it mounts at the root, like
+  an unregistered blueprint. Modules that do not import Flask are left alone, so a FastAPI
+  `def mount(router): @router.get` is not claimed. Rejected: resolving the dynamic `importlib` caller
+  (not statically possible) and treating every parameter as an app (would claim other frameworks).
+  Tests: `test_flask_routes_registered_on_a_function_parameter`,
+  `test_parameter_router_outside_flask_is_not_a_flask_route`. OWASP bench routes 3 → 2,463. In the
+  same round our own bench `Dockerfile` runs the app as a non-root user, because write-mode traversal
+  tests truncated `/etc/passwd` as root and hid later proofs (environment only, upstream unchanged).
+- **A-70 (second third-party benchmark: OWASP Benchmark for Python)**: chose
+  [`OWASP-Benchmark/BenchmarkPython`](https://github.com/OWASP-Benchmark/BenchmarkPython) (Flask 3.1,
+  Python 3.12), pinned at `f1291485808b66e20ddb6b01b10dc71b3df8c8ba` (`main`, 2026-05-19), bench slug
+  `owasp-benchmark-python`. Licence GNU GPL v3.0 (`GPL-3.0-only`); we only clone it locally into the
+  git-ignored `src/` and never redistribute, so no permission is needed. The official solution is
+  `expectedresults-0.1.csv` (one true/false row per test case). In our scope it documents 151
+  vulnerabilities: sqli 5, xss 31, cmdi 13, pathtraver 65, redirect 13 (code + runtime) and
+  securecookie/CWE-614 24 (runtime only). It also documents 215 known-safe `false` cases of the same
+  categories, which are the only decoys we may key. No login. No upstream Docker, so our compose wrapper
+  builds `python:3.12-slim` and serves plain HTTP on 127.0.0.1:8110 (upstream uses `--cert=adhoc` on
+  8443). Comparison (in-scope vulns documented by an official solution / licence / Python+Docker /
+  routes / last push / decoys), sources in `out/wf_bench_new/research.md`:
+
+  | Candidate | In scope | Licence | Py / Docker | Routes | Last push | Decoys |
+  |---|---|---|---|---|---|---|
+  | BenchmarkPython | 151 | GPL-3.0 | 3.12 / own wrapper | Flask | 2026-05 | 215 |
+  | DVBLab (mamgad) | ~21 | none | 3 / compose | Flask | 2026-06 | yes |
+  | PyGoat | ~5-7 | MIT | 3.11 / compose | Django, login | 2026-10 | none |
+  | lets-be-bad-guys | ~7 | MIT | Django 1.9 / none | Django | 2024-07 | none |
+  | django.nV (NetSPI) | ~5 | GPL-2.0 | Django 1.8 / none | Django, login | 2021-11 | none |
+  | Tiredful-API | ~2 | GPL-3.0 | Py 2 / Dockerfile | DRF | 2021-06 | none |
+  | vulpy | ~2, no solution | MIT | 3 / none | Flask | 2024-05 | undocumented |
+  | VAmPI | 1 | MIT | 3 / Docker | connexion YAML | 2026-04 | on/off switch |
+  | DVGA | several | MIT | 3 / Docker | GraphQL | 2025-05 | none |
+  | breakableflask | 2 | MIT | 3 | Flask | 2025-12 | none |
+  | SKF labs | 20+ | Apache-2.0 | 3 / per lab | 88 separate Flask apps | 2024-08 | none |
+  | Unsafe Code Lab | few (authz bugs) | MIT | 3 / Docker | Flask | 2026-05 | fixed copies |
+
+  Reasoning: it is the only single runnable app whose official solution documents more than 20
+  in-scope vulnerabilities, the only one with official per-case decoys, and it is Flask (our best-fit
+  framework), Python 3, login-free and maintained. DVBLab is the runner-up but has no licence.
+  Accepted trade-offs: it is a synthetic suite (one small route per case), not a realistic app; many
+  flows read headers, cookies or the path, which our DAST does not inject; its 1,230 modules may strain
+  DAST budgets; and its routes are `@app.route` decorators on functions nested inside
+  `def init(app):`, which our Flask extractor may not read (a framework-idiom triage item for stage 3).
 - **A-69 (Phase 6 round 2 scope)**: round 2 ships B04 (A-67) and B33 (A-68) and stops at the goal
   (Mock B links 8/10). B10/B32 (login-route probing) and B06 (blind cmdi, out of reach under R4) stay
   deferred to later rounds.

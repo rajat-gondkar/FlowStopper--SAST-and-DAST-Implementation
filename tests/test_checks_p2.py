@@ -188,6 +188,24 @@ async def test_traversal_not_flagged_when_baseline_already_has_passwd():
     assert findings == []
 
 
+async def test_traversal_detected_through_html_entity_encoding():
+    """An app that echoes the file through an HTML encoder (`:` -> `&#x3a;`) still discloses it."""
+
+    def encoded_app(request: httpx.Request) -> httpx.Response:
+        if ".." in request.url.params.get("file", ""):
+            body = "<pre>" + PASSWD.replace(":", "&#x3a;").replace("/", "&#47;") + "</pre>"
+            return httpx.Response(200, text=body, headers={"content-type": "text/html"})
+        return httpx.Response(200, text="<pre>report contents</pre>", headers={"content-type": "text/html"})
+
+    ctx = _ctx(encoded_app)
+    ep, param = _endpoint("/download", "file", "a.txt")
+    findings = await traversal.run(ctx, ep, param)
+    await ctx.client.aclose()
+    assert [(f.rule_id, f.raw["matched"]) for f in findings] == [("dast.traversal.file", "root:x:0:0:")]
+    assert traversal.passwd_match("root&#x3a;x&#x3a;0&#x3a;0&#x3a;") is not None
+    assert traversal.passwd_match("root&amp;#x3a;x") is None
+
+
 async def test_encoded_traversal_payload_is_not_double_encoded():
     """R4 fidelity: `..%2f` must reach the target as `%2f`, not re-encoded to `%252f`."""
     seen: list[str] = []

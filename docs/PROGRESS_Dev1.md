@@ -133,6 +133,13 @@ started. Dev B tracks their own in [`PROGRESS_Dev2.md`](PROGRESS_Dev2.md). Full 
 - [x] Choose app + log (D-16); `make bench-fetch`/`make bench`; source-verified `answer_key.json`;
   scope via `ALLOWED_HOSTS` config only (R3); R6 guard extended to `bench/*/answer_key.json`;
   THIRD_PARTY credit. CC-01 ACKed by Dev B.
+- [x] Second benchmark, OWASP Benchmark for Python (A-70): pinned clone, own Docker wrapper on :8110,
+  key of 151 vulns + 215 decoys from the official CSV; first run frozen (all 0). Round 1 (A-71..A-73:
+  Flask routes on a function parameter, traversal proof through HTML entities, `make_response` tuple
+  body only, non-root bench container): code 0/127 → 51/127, runtime 0/151 → 28/151, links 0/127 →
+  15/127, wrong 0/22, false alarms 0/5 → 68/739; Mock A, Mock B and we45 unchanged (identical issue
+  sets). See [`metrics/bench_owasp-benchmark-python.md`](metrics/bench_owasp-benchmark-python.md).
+  `make check` 711 passed, 2 skipped (the two live Mock A tests; 713 passed with Mock A up).
 
 ---
 _Log_

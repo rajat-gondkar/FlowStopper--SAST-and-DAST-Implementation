@@ -67,7 +67,7 @@ def _redirect_signal(ex: HttpExchange) -> bool:
 CONTROL_SIGNALS: dict[str, Callable[[HttpExchange], bool]] = {
     "dast.sqli.error": lambda ex: bool(sqli_check.SQL_ERRORS.search(ex.body)),
     "dast.sqli.status": lambda ex: ex.status >= 500,
-    "dast.traversal.file": lambda ex: bool(traversal_check.PASSWD_RE.search(ex.body)),
+    "dast.traversal.file": lambda ex: bool(traversal_check.passwd_match(ex.body)),
     "dast.redirect.open": _redirect_signal,
 }
 

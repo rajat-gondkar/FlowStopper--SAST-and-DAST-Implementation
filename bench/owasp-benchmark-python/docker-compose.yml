@@ -1,0 +1,13 @@
+# FlowStopper's OWN Compose for the OWASP Benchmark for Python. This is our orchestration wrapper,
+# NOT part of the app and NOT vendored. Upstream ships no Dockerfile, so ./Dockerfile (ours) builds an
+# image from the cloned, unmodified source in ./src and we publish it on 127.0.0.1 only, on a
+# non-clashing port. Used by scripts/bench_fetch.sh (project flowstopper-bench-owasp-benchmark-python).
+services:
+  benchmark:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: flowstopper-bench-owasp-benchmark-python
+    ports:
+      # host 127.0.0.1:${BENCH_PORT:-8110} -> container 8443 (upstream's port, served over plain HTTP here)
+      - "127.0.0.1:${BENCH_PORT:-8110}:8443"

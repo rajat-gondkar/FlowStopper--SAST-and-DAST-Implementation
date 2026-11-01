@@ -1,0 +1,55 @@
+{
+  "schema": "flowstopper-metrics/1",
+  "app": "owasp-benchmark-python",
+  "key": "bench/owasp-benchmark-python/answer_key.json",
+  "evaluated_at": "2026-10-31T23:39:12+00:00",
+  "source": {
+    "kind": "issues",
+    "scan_id": "07455d3a70be9de0",
+    "issues": "out/owasp-benchmark-python_first/issues.json",
+    "db": null
+  },
+  "run_time_s": 48.097,
+  "truncated": false,
+  "issues": {
+    "total": 5,
+    "reported": 5,
+    "suppressed": 0
+  },
+  "unplanted": 5,
+  "metrics": {
+    "code_detection": {
+      "found": 0,
+      "total": 127,
+      "rate": 0.0
+    },
+    "runtime_detection": {
+      "found": 0,
+      "total": 151,
+      "rate": 0.0
+    },
+    "correct_links": {
+      "found": 0,
+      "total": 127,
+      "rate": 0.0
+    },
+    "wrong_links": {
+      "count": 0,
+      "confirmed": 0,
+      "rate": 0.0
+    },
+    "false_alarms": {
+      "count": 0,
+      "reported": 5,
+      "rate": 0.0
+    }
+  },
+  "status": {
+    "code_detection": "below",
+    "runtime_detection": "below",
+    "correct_links": "below",
+    "wrong_links": "n/a",
+    "false_alarms": "great",
+    "run_time": "great"
+  }
+}
